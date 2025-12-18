@@ -108,6 +108,12 @@ See the [`examples/`](examples/) directory for runnable code:
 | [`webhook-ingestion-example.php`](examples/webhook-ingestion-example.php) | Webhook validation and ingestion |
 | [`error-handling.php`](examples/error-handling.php) | Error handling patterns and retry logic |
 
+## Real-world examples (beginner friendly)
+
+If you want 5 copy/paste “real life” setups (Stripe → jobs, GitHub Actions → jobs, cron schedules, CSV import, website signup), see:
+
+- `https://github.com/spooled-cloud/spooled-backend/blob/main/docs/guides/real-world-examples.md`
+
 ## Core Concepts
 
 ### Jobs
