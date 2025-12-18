@@ -23,7 +23,6 @@ declare(strict_types=1);
  *   SKIP_GRPC=0|1
  *   SKIP_STRESS=0|1
  */
-
 $argv = array_slice($GLOBALS['argv'], 1);
 $isFull = in_array('--full', $argv, true);
 $isVerbose = in_array('--verbose', $argv, true);
@@ -75,9 +74,9 @@ $scriptPath = __DIR__ . '/test-local.php';
 echo "╔════════════════════════════════════════════════════════════╗\n";
 echo "║           SPOOLED PHP SDK - PRODUCTION TESTS               ║\n";
 echo "╠════════════════════════════════════════════════════════════╣\n";
-echo "║  Base URL: " . str_pad($baseUrl, 46) . " ║\n";
-echo "║  gRPC:     " . str_pad($grpcAddress, 46) . " ║\n";
-echo "║  Mode:     " . str_pad($isFull ? 'Full (with stress tests)' : 'Safe (no stress tests)', 46) . " ║\n";
+echo '║  Base URL: ' . str_pad($baseUrl, 46) . " ║\n";
+echo '║  gRPC:     ' . str_pad($grpcAddress, 46) . " ║\n";
+echo '║  Mode:     ' . str_pad($isFull ? 'Full (with stress tests)' : 'Safe (no stress tests)', 46) . " ║\n";
 echo "╚════════════════════════════════════════════════════════════╝\n\n";
 
 // Create process with environment
@@ -111,13 +110,13 @@ while (true) {
     $read = [$pipes[1], $pipes[2]];
     $write = null;
     $except = null;
-    
+
     $changed = @stream_select($read, $write, $except, 1);
-    
+
     if ($changed === false) {
         break;
     }
-    
+
     foreach ($read as $pipe) {
         $data = fread($pipe, 8192);
         if ($data !== false && $data !== '') {
@@ -128,7 +127,7 @@ while (true) {
             }
         }
     }
-    
+
     // Check if process has finished
     $status = proc_get_status($process);
     if (!$status['running']) {

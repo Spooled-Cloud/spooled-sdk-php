@@ -6,6 +6,7 @@ namespace Spooled;
 
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use RuntimeException;
 use Spooled\Config\ClientOptions;
 use Spooled\Grpc\GrpcOptions;
 use Spooled\Grpc\SpooledGrpcClient;
@@ -219,7 +220,7 @@ final class SpooledClient
 
         $apiKey = $this->options->apiKey;
         if ($apiKey === null || $apiKey === '') {
-            throw new \RuntimeException('gRPC client requires an API key (set ClientOptions::$apiKey)');
+            throw new RuntimeException('gRPC client requires an API key (set ClientOptions::$apiKey)');
         }
 
         $address = $this->options->grpcAddress ?? 'grpc.spooled.cloud:443';

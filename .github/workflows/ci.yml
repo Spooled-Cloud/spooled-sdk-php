@@ -84,7 +84,7 @@ jobs:
           composer require grpc/grpc google/protobuf --dev
 
       - name: Run gRPC tests
-        run: vendor/bin/phpunit --testsuite=unit --group=grpc
+        run: vendor/bin/phpunit --testsuite=unit --group=grpc --no-coverage
 
   realtime:
     name: Realtime Tests (PHP 8.2)
@@ -108,4 +108,4 @@ jobs:
           composer require ratchet/pawl --dev
 
       - name: Run realtime tests
-        run: vendor/bin/phpunit --testsuite=unit --group=realtime
+        run: vendor/bin/phpunit --testsuite=unit --group=realtime --no-coverage

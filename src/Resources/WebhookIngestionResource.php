@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Spooled\Resources;
 
-use InvalidArgumentException;
 use Spooled\Errors\ValidationError;
 
 /**

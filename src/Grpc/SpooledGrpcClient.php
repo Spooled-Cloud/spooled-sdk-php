@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Spooled\Grpc;
 
-use Generator;
+use DateTime;
+use DateTimeInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use RuntimeException;
+use Throwable;
 
 /**
  * gRPC client for high-performance operations.
@@ -49,10 +51,10 @@ final class SpooledGrpcClient
     /**
      * Wait for the gRPC channel to be ready.
      *
-     * @param \DateTime|null $deadline Maximum time to wait
+     * @param DateTime|null $deadline Maximum time to wait
      * @throws RuntimeException if connection fails
      */
-    public function waitForReady(?\DateTime $deadline = null): void
+    public function waitForReady(?DateTime $deadline = null): void
     {
         $this->ensureAvailable();
 
@@ -66,7 +68,7 @@ final class SpooledGrpcClient
             $this->workers = new GrpcWorkersResource($this);
 
             $this->logger->debug('gRPC client ready', ['address' => $this->options->address]);
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             throw new RuntimeException(
                 'Failed to connect to gRPC server at ' . $this->options->address . ': ' . $e->getMessage(),
                 0,
@@ -232,7 +234,7 @@ final class GrpcQueueResource
 
         if (isset($params['scheduledAt'])) {
             $timestamp = new \Google\Protobuf\Timestamp();
-            if ($params['scheduledAt'] instanceof \DateTimeInterface) {
+            if ($params['scheduledAt'] instanceof DateTimeInterface) {
                 $timestamp->setSeconds($params['scheduledAt']->getTimestamp());
             } else {
                 $timestamp->setSeconds((int) $params['scheduledAt']);
@@ -285,6 +287,7 @@ final class GrpcQueueResource
             if ($status->code === \Grpc\STATUS_NOT_FOUND) {
                 return null;
             }
+
             throw new RuntimeException("gRPC error: {$status->details}", $status->code);
         }
 

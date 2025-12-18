@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Spooled\Resources;
 
+use InvalidArgumentException;
 use Spooled\Types\AuthTokens;
 use Spooled\Types\EmailCheckResponse;
 use Spooled\Types\EmailLoginStartResponse;
@@ -71,7 +72,7 @@ final class AuthResource extends BaseResource
         $tokenToValidate = $token ?? $this->httpClient->getAccessToken();
 
         if ($tokenToValidate === null) {
-            throw new \InvalidArgumentException('No token provided for validation');
+            throw new InvalidArgumentException('No token provided for validation');
         }
 
         $response = $this->httpClient->post('auth/validate', ['token' => $tokenToValidate]);

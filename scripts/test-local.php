@@ -2583,7 +2583,7 @@ function testQueueConfigUpdate(SpooledClient $client, TestHarness $harness, stri
                 'defaultTimeout' => 300,
                 'enabled' => true,
             ]);
-            $harness->log("Updated queue config: maxRetries=5");
+            $harness->log('Updated queue config: maxRetries=5');
         } catch (SpooledError $e) {
             if ($e->statusCode === 404 || $e->statusCode === 400 || $e->statusCode === 405) {
                 $harness->log('Queue config update not available or not supported');
@@ -2851,7 +2851,7 @@ function testGrpc(SpooledClient $client, TestHarness $harness, string $testPrefi
             ]);
 
             assertEqual($failResult['success'] ?? true, true, 'fail success with long error');
-            $harness->log("Fail with " . strlen($longError) . " char error message succeeded");
+            $harness->log('Fail with ' . strlen($longError) . ' char error message succeeded');
 
             $grpcClient->workers->deregister(['workerId' => $wId]);
         });
@@ -3262,6 +3262,7 @@ function testGrpcAdvanced(SpooledClient $client, TestHarness $harness, string $t
 
         $harness->runTest('gRPC: GetQueueStats - empty queue', function () use ($grpcClient, $testPrefix, $harness): void {
             $emptyQueue = "{$testPrefix}-empty-" . time();
+
             try {
                 $result = $grpcClient->queue->getStats(['queueName' => $emptyQueue]);
                 $harness->log('Stats for empty queue retrieved');
@@ -3402,7 +3403,7 @@ function testGrpcErrors(TestHarness $harness, string $testPrefix, string $grpcAd
                 $msg = $e->getMessage();
                 assertTrue(
                     strpos($msg, 'INVALID_ARGUMENT') !== false || strpos($msg, 'alphanumeric') !== false,
-                    'expected validation error'
+                    'expected validation error',
                 );
                 $harness->log('Special chars in queue name correctly rejected');
             }

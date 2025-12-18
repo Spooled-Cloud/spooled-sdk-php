@@ -1,0 +1,128 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Test before release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          extensions: json, mbstring, grpc, protobuf
+          coverage: none
+          tools: composer:v2
+
+      - name: Get Composer cache directory
+        id: composer-cache
+        run: echo "dir=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+      - name: Cache Composer dependencies
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.composer-cache.outputs.dir }}
+          key: ${{ runner.os }}-composer-8.2-${{ hashFiles('**/composer.json') }}
+          restore-keys: |
+            ${{ runner.os }}-composer-8.2-
+            ${{ runner.os }}-composer-
+
+      - name: Install dependencies
+        run: |
+          composer update --prefer-stable --prefer-dist --no-interaction --no-progress
+          composer require grpc/grpc google/protobuf --dev
+
+      - name: Run PHPStan
+        run: composer analyse
+
+      - name: Check code style
+        run: composer format:check
+
+      - name: Run unit tests
+        run: composer test
+
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get commits since last tag
+          PREVIOUS_TAG=$(git describe --abbrev=0 --tags HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREVIOUS_TAG" ]; then
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..HEAD)
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD~10..HEAD)
+          fi
+          
+          # Escape for GitHub Actions
+          CHANGELOG="${CHANGELOG//'%'/'%25'}"
+          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
+          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
+          
+          echo "CHANGELOG=$CHANGELOG" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          name: v${{ steps.version.outputs.VERSION }}
+          body: |
+            ## Spooled PHP SDK v${{ steps.version.outputs.VERSION }}
+            
+            ### Installation
+            
+            ```bash
+            composer require spooled-cloud/spooled
+            ```
+            
+            ### Changes
+            
+            ${{ steps.changelog.outputs.CHANGELOG }}
+            
+            ### Links
+            
+            - [Documentation](https://github.com/spooled-cloud/spooled-sdk-php#readme)
+            - [Packagist](https://packagist.org/packages/spooled-cloud/spooled)
+            - [API Reference](https://spooled.cloud/docs)
+          draft: false
+          prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify-packagist:
+    name: Notify Packagist
+    runs-on: ubuntu-latest
+    needs: release
+    if: ${{ vars.PACKAGIST_USERNAME != '' }}
+
+    steps:
+      - name: Trigger Packagist update
+        run: |
+          curl -XPOST -H'content-type:application/json' \
+            "https://packagist.org/api/update-package?username=${{ vars.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_TOKEN }}" \
+            -d'{"repository":{"url":"https://github.com/spooled-cloud/spooled-sdk-php"}}'
+        continue-on-error: true
+
