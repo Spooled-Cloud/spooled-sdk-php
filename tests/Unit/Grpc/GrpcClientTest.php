@@ -31,11 +31,11 @@ final class GrpcClientTest extends TestCase
     {
         $options = GrpcOptions::fromArray([
             'address' => 'grpc.spooled.cloud:443',
-            'apiKey' => 'sk_live_test',
+            'apiKey' => 'sp_test_test_key',
         ]);
 
         $this->assertSame('grpc.spooled.cloud:443', $options->address);
-        $this->assertSame('sk_live_test', $options->apiKey);
+        $this->assertSame('sp_test_test_key', $options->apiKey);
         $this->assertTrue($options->secure); // Default
         $this->assertNull($options->timeout); // Default is null
     }
