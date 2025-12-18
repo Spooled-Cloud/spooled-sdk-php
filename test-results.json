@@ -1,0 +1,712 @@
+{
+    "timestamp": "2025-12-18T13:51:39+00:00",
+    "total": 175,
+    "results": {
+        "GET \/health - Full health check": {
+            "passed": true,
+            "duration": 16.99519157409668
+        },
+        "GET \/health\/live - Liveness probe": {
+            "passed": true,
+            "duration": 15.173196792602539
+        },
+        "GET \/health\/ready - Readiness probe": {
+            "passed": true,
+            "duration": 17.409086227416992
+        },
+        "GET \/api\/v1\/dashboard": {
+            "passed": true,
+            "duration": 23.7729549407959
+        },
+        "GET \/api\/v1\/organizations\/usage - Get usage & limits": {
+            "passed": true,
+            "duration": 19.608020782470703
+        },
+        "GET \/api\/v1\/api-keys - List API keys": {
+            "passed": true,
+            "duration": 17.894983291625977
+        },
+        "POST \/api\/v1\/api-keys - Create API key": {
+            "passed": true,
+            "duration": 248.03686141967773
+        },
+        "GET \/api\/v1\/api-keys\/{id} - Get API key": {
+            "passed": true,
+            "duration": 19.585132598876953
+        },
+        "PUT \/api\/v1\/api-keys\/{id} - Update API key": {
+            "passed": true,
+            "duration": 39.95704650878906
+        },
+        "New API key works for authentication": {
+            "passed": true,
+            "duration": 746.7408180236816
+        },
+        "DELETE \/api\/v1\/api-keys\/{id} - Revoke API key": {
+            "passed": true,
+            "duration": 19.84095573425293
+        },
+        "POST \/api\/v1\/jobs - Create job": {
+            "passed": true,
+            "duration": 23.926973342895508
+        },
+        "GET \/api\/v1\/jobs\/{id} - Get job": {
+            "passed": true,
+            "duration": 18.121004104614258
+        },
+        "GET \/api\/v1\/jobs - List jobs": {
+            "passed": true,
+            "duration": 19.428014755249023
+        },
+        "GET \/api\/v1\/jobs - Filter by status": {
+            "passed": true,
+            "duration": 19.2110538482666
+        },
+        "PUT \/api\/v1\/jobs\/{id}\/priority - Boost priority": {
+            "passed": true,
+            "duration": 36.32211685180664
+        },
+        "DELETE \/api\/v1\/jobs\/{id} - Cancel job": {
+            "passed": true,
+            "duration": 38.65313529968262
+        },
+        "POST \/api\/v1\/jobs\/bulk - Bulk create": {
+            "passed": true,
+            "duration": 23.39482307434082
+        },
+        "GET \/api\/v1\/jobs\/status - Batch status lookup": {
+            "passed": true,
+            "duration": 62.95013427734375
+        },
+        "GET \/api\/v1\/jobs\/stats - Job statistics": {
+            "passed": true,
+            "duration": 20.020008087158203
+        },
+        "Create job with idempotency key": {
+            "passed": true,
+            "duration": 22.524118423461914
+        },
+        "Duplicate with same idempotency key returns existing": {
+            "passed": true,
+            "duration": 20.222187042236328
+        },
+        "Create job for lifecycle test": {
+            "passed": true,
+            "duration": 23.945093154907227
+        },
+        "POST \/api\/v1\/workers\/register": {
+            "passed": true,
+            "duration": 20.128965377807617
+        },
+        "POST \/api\/v1\/jobs\/claim - Claim job": {
+            "passed": true,
+            "duration": 20.2939510345459
+        },
+        "Job status is processing after claim": {
+            "passed": true,
+            "duration": 17.698049545288086
+        },
+        "POST \/api\/v1\/jobs\/{id}\/heartbeat - Extend lease": {
+            "passed": true,
+            "duration": 39.13402557373047
+        },
+        "POST \/api\/v1\/jobs\/{id}\/complete - Complete job": {
+            "passed": true,
+            "duration": 42.87099838256836
+        },
+        "POST \/api\/v1\/workers\/{id}\/deregister": {
+            "passed": true,
+            "duration": 19.00506019592285
+        },
+        "Create job for failure test": {
+            "passed": true,
+            "duration": 22.984981536865234
+        },
+        "Register worker and claim job": {
+            "passed": true,
+            "duration": 41.529178619384766
+        },
+        "POST \/api\/v1\/jobs\/{id}\/fail - Fail job": {
+            "passed": true,
+            "duration": 41.3210391998291
+        },
+        "POST \/api\/v1\/jobs\/{id}\/retry - Manual retry": {
+            "passed": true,
+            "duration": 41.378021240234375
+        },
+        "GET \/api\/v1\/jobs\/dlq - List DLQ": {
+            "passed": true,
+            "duration": 18.492937088012695
+        },
+        "Create queue (via job)": {
+            "passed": true,
+            "duration": 22.6290225982666
+        },
+        "GET \/api\/v1\/queues - List queues": {
+            "passed": true,
+            "duration": 18.732070922851562
+        },
+        "POST \/api\/v1\/queues\/{name}\/pause - Pause queue": {
+            "passed": true,
+            "duration": 18.55015754699707
+        },
+        "POST \/api\/v1\/queues\/{name}\/resume - Resume queue": {
+            "passed": true,
+            "duration": 22.212982177734375
+        },
+        "GET \/api\/v1\/workers - List workers": {
+            "passed": true,
+            "duration": 18.35799217224121
+        },
+        "GET \/api\/v1\/workers\/{id} - Get worker": {
+            "passed": true,
+            "duration": 18.86892318725586
+        },
+        "POST \/api\/v1\/workers\/{id}\/heartbeat": {
+            "passed": true,
+            "duration": 38.143157958984375
+        },
+        "POST \/api\/v1\/outgoing-webhooks - Create webhook": {
+            "passed": true,
+            "duration": 17.964839935302734
+        },
+        "GET \/api\/v1\/outgoing-webhooks - List webhooks": {
+            "passed": true,
+            "duration": 16.319990158081055
+        },
+        "GET \/api\/v1\/outgoing-webhooks\/{id} - Get webhook": {
+            "passed": true,
+            "duration": 0,
+            "skipped": true
+        },
+        "PUT \/api\/v1\/outgoing-webhooks\/{id} - Update webhook": {
+            "passed": true,
+            "duration": 0,
+            "skipped": true
+        },
+        "POST \/api\/v1\/outgoing-webhooks\/{id}\/test - Test webhook": {
+            "passed": true,
+            "duration": 0,
+            "skipped": true
+        },
+        "GET \/api\/v1\/outgoing-webhooks\/{id}\/deliveries - List deliveries": {
+            "passed": true,
+            "duration": 0,
+            "skipped": true
+        },
+        "DELETE \/api\/v1\/outgoing-webhooks\/{id} - Delete webhook": {
+            "passed": true,
+            "duration": 0,
+            "skipped": true
+        },
+        "POST \/api\/v1\/schedules - Create schedule": {
+            "passed": true,
+            "duration": 18.934011459350586
+        },
+        "GET \/api\/v1\/schedules - List schedules": {
+            "passed": true,
+            "duration": 18.519163131713867
+        },
+        "GET \/api\/v1\/schedules\/{id} - Get schedule": {
+            "passed": true,
+            "duration": 19.138097763061523
+        },
+        "PUT \/api\/v1\/schedules\/{id} - Update schedule": {
+            "passed": true,
+            "duration": 36.756038665771484
+        },
+        "POST \/api\/v1\/schedules\/{id}\/pause - Pause schedule": {
+            "passed": true,
+            "duration": 20.103931427001953
+        },
+        "POST \/api\/v1\/schedules\/{id}\/resume - Resume schedule": {
+            "passed": true,
+            "duration": 19.2410945892334
+        },
+        "POST \/api\/v1\/schedules\/{id}\/trigger - Manual trigger": {
+            "passed": true,
+            "duration": 26.57008171081543
+        },
+        "GET \/api\/v1\/schedules\/{id}\/history - Execution history": {
+            "passed": true,
+            "duration": 237.98513412475586
+        },
+        "DELETE \/api\/v1\/schedules\/{id} - Delete schedule": {
+            "passed": true,
+            "duration": 22.935867309570312
+        },
+        "POST \/api\/v1\/workflows - Create workflow": {
+            "passed": true,
+            "duration": 36.38601303100586
+        },
+        "GET \/api\/v1\/workflows - List workflows": {
+            "passed": true,
+            "duration": 20.67279815673828
+        },
+        "GET \/api\/v1\/workflows\/{id} - Get workflow": {
+            "passed": true,
+            "duration": 19.465208053588867
+        },
+        "POST \/api\/v1\/workflows\/{id}\/cancel - Cancel workflow": {
+            "passed": true,
+            "duration": 21.72994613647461
+        },
+        "Create workflow for retry test": {
+            "passed": true,
+            "duration": 26.626110076904297
+        },
+        "POST \/api\/v1\/workflows\/{id}\/retry - Retry workflow (should fail - not failed status)": {
+            "passed": true,
+            "duration": 20.1718807220459
+        },
+        "Create workflow with DAG dependencies": {
+            "passed": true,
+            "duration": 33.57815742492676
+        },
+        "Only root job (A) is initially pending": {
+            "passed": true,
+            "duration": 19.572019577026367
+        },
+        "Process workflow jobs in order": {
+            "passed": true,
+            "duration": 1069.2799091339111
+        },
+        "Workflow completes successfully": {
+            "passed": true,
+            "duration": 24.26600456237793
+        },
+        "Job dependencies API": {
+            "passed": true,
+            "duration": 21.31795883178711
+        },
+        "Create queue via job": {
+            "passed": true,
+            "duration": 22.483110427856445
+        },
+        "GET \/api\/v1\/queues\/{name} - Get queue details": {
+            "passed": true,
+            "duration": 20.487070083618164
+        },
+        "GET \/api\/v1\/queues\/{name}\/stats - Get queue stats": {
+            "passed": true,
+            "duration": 22.215843200683594
+        },
+        "DELETE \/api\/v1\/queues\/{name} - Delete queue": {
+            "passed": true,
+            "duration": 252.5491714477539
+        },
+        "POST \/api\/v1\/jobs\/dlq\/retry - Retry DLQ jobs": {
+            "passed": true,
+            "duration": 20.97296714782715
+        },
+        "POST \/api\/v1\/jobs\/dlq\/purge - Purge DLQ": {
+            "passed": true,
+            "duration": 19.899845123291016
+        },
+        "GET \/api\/v1\/billing\/status - Get billing status": {
+            "passed": true,
+            "duration": 17.925024032592773
+        },
+        "POST \/api\/v1\/billing\/portal - Create portal session": {
+            "passed": true,
+            "duration": 19.283056259155273
+        },
+        "POST \/api\/v1\/organizations - Create new organization": {
+            "passed": true,
+            "duration": 53.524017333984375
+        },
+        "Setup webhook for retry test": {
+            "passed": true,
+            "duration": 30.949831008911133
+        },
+        "POST \/api\/v1\/outgoing-webhooks\/{id}\/retry\/{delivery_id}": {
+            "passed": true,
+            "duration": 18.971920013427734
+        },
+        "POST \/api\/v1\/auth\/login - Exchange API key for JWT": {
+            "passed": true,
+            "duration": 484.2710494995117
+        },
+        "POST \/api\/v1\/auth\/validate - Validate token": {
+            "passed": true,
+            "duration": 58.66098403930664
+        },
+        "GET \/api\/v1\/auth\/me - Get current user (JWT)": {
+            "passed": true,
+            "duration": 53.9700984954834
+        },
+        "POST \/api\/v1\/auth\/refresh - Refresh token": {
+            "passed": true,
+            "duration": 18.357038497924805
+        },
+        "POST \/api\/v1\/auth\/logout - Logout": {
+            "passed": true,
+            "duration": 85.63089370727539
+        },
+        "GET \/api\/v1\/events - SSE connection test": {
+            "passed": true,
+            "duration": 2484.9250316619873
+        },
+        "GET \/metrics - Prometheus metrics": {
+            "passed": true,
+            "duration": 56.46204948425293
+        },
+        "GET \/api\/v1\/ws - WebSocket connectivity": {
+            "passed": true,
+            "duration": 487.06698417663574
+        },
+        "GET \/api\/v1\/organizations\/check-slug - Check slug availability": {
+            "passed": true,
+            "duration": 105.76605796813965
+        },
+        "POST \/api\/v1\/organizations\/generate-slug - Generate slug": {
+            "passed": true,
+            "duration": 21.95000648498535
+        },
+        "GET \/api\/v1\/organizations - List organizations": {
+            "passed": true,
+            "duration": 18.56398582458496
+        },
+        "GET \/api\/v1\/organizations\/webhook-token - Get webhook token": {
+            "passed": true,
+            "duration": 20.95508575439453
+        },
+        "POST \/api\/v1\/organizations\/webhook-token\/regenerate - Regenerate token": {
+            "passed": true,
+            "duration": 24.561166763305664
+        },
+        "POST \/api\/v1\/organizations\/webhook-token\/clear - Clear token": {
+            "passed": true,
+            "duration": 23.61893653869629
+        },
+        "ingest - custom webhook": {
+            "passed": true,
+            "duration": 0,
+            "skipped": true
+        },
+        "ingest - github signature validation": {
+            "passed": true,
+            "duration": 0.03910064697265625
+        },
+        "ingest - stripe signature validation": {
+            "passed": true,
+            "duration": 0.0400543212890625
+        },
+        "Job with expiration": {
+            "passed": true,
+            "duration": 66.63084030151367
+        },
+        "Create and start SpooledWorker": {
+            "passed": true,
+            "duration": 6.587982177734375
+        },
+        "Process multiple jobs through worker": {
+            "passed": true,
+            "duration": 407.0301055908203
+        },
+        "Worker handles job failures gracefully": {
+            "passed": true,
+            "duration": 221.35210037231445
+        },
+        "Stop worker gracefully": {
+            "passed": true,
+            "duration": 0.009059906005859375
+        },
+        "Setup webhook for job events": {
+            "passed": true,
+            "duration": 21.5299129486084
+        },
+        "Create job and receive job.created webhook": {
+            "passed": true,
+            "duration": 23.842811584472656
+        },
+        "Process job and verify webhooks": {
+            "passed": true,
+            "duration": 734.6720695495605
+        },
+        "Create workflow for jobs testing": {
+            "passed": true,
+            "duration": 82.72504806518555
+        },
+        "GET \/api\/v1\/workflows\/{id}\/jobs - List workflow jobs": {
+            "passed": true,
+            "duration": 21.56686782836914
+        },
+        "GET \/api\/v1\/workflows\/{id}\/jobs\/{job_id} - Get specific job": {
+            "passed": true,
+            "duration": 16.407012939453125
+        },
+        "GET \/api\/v1\/workflows\/{id}\/jobs\/status - Get jobs status": {
+            "passed": true,
+            "duration": 18.867015838623047
+        },
+        "Cleanup - Cancel workflow": {
+            "passed": true,
+            "duration": 27.729034423828125
+        },
+        "Create queue via job for config test": {
+            "passed": true,
+            "duration": 22.15099334716797
+        },
+        "PUT \/api\/v1\/queues\/{name}\/config - Update queue config": {
+            "passed": true,
+            "duration": 21.652936935424805
+        },
+        "Admin endpoints (skipped - no ADMIN_KEY)": {
+            "passed": true,
+            "duration": 0.0040531158447265625
+        },
+        "POST \/api\/v1\/auth\/email\/start - Start email login": {
+            "passed": true,
+            "duration": 495.4638481140137
+        },
+        "GET \/api\/v1\/auth\/check-email - Check email exists": {
+            "passed": true,
+            "duration": 29.094934463500977
+        },
+        "Tier: Check current plan and usage": {
+            "passed": true,
+            "duration": 45.93205451965332
+        },
+        "Tier: Verify usage tracking": {
+            "passed": true,
+            "duration": 163.02204132080078
+        },
+        "Tier: Create fresh free tier org": {
+            "passed": true,
+            "duration": 62.689781188964844
+        },
+        "Tier: Free org has correct limits": {
+            "passed": true,
+            "duration": 0.009059906005859375
+        },
+        "Tier: Free org job limit enforcement": {
+            "passed": true,
+            "duration": 0.0021457672119140625
+        },
+        "Job with large payload": {
+            "passed": true,
+            "duration": 106.2769889831543
+        },
+        "Job with scheduled time in future": {
+            "passed": true,
+            "duration": 58.55417251586914
+        },
+        "Concurrent job claims (race condition)": {
+            "passed": true,
+            "duration": 151.92604064941406
+        },
+        "Special characters in queue name": {
+            "passed": true,
+            "duration": 63.34519386291504
+        },
+        "Unicode in payload": {
+            "passed": true,
+            "duration": 45.45998573303223
+        },
+        "Job with all optional fields": {
+            "passed": true,
+            "duration": 64.07999992370605
+        },
+        "404 for non-existent job": {
+            "passed": true,
+            "duration": 19.407987594604492
+        },
+        "Validation error for invalid payload": {
+            "passed": true,
+            "duration": 21.44908905029297
+        },
+        "401 for invalid API key": {
+            "passed": true,
+            "duration": 65.86408615112305
+        },
+        "404 for non-existent worker": {
+            "passed": true,
+            "duration": 18.776893615722656
+        },
+        "404 for non-existent webhook": {
+            "passed": true,
+            "duration": 18.461942672729492
+        },
+        "Concurrent job creation": {
+            "passed": true,
+            "duration": 208.36901664733887
+        },
+        "Concurrent worker registration": {
+            "passed": true,
+            "duration": 221.32396697998047
+        },
+        "Concurrent job claim race": {
+            "passed": true,
+            "duration": 242.80309677124023
+        },
+        "Concurrent complete attempts": {
+            "passed": true,
+            "duration": 218.4600830078125
+        },
+        "Mixed concurrent operations": {
+            "passed": true,
+            "duration": 234.73501205444336
+        },
+        "Bulk enqueue 5 jobs": {
+            "passed": true,
+            "duration": 25.929927825927734
+        },
+        "Rapid sequential operations": {
+            "passed": true,
+            "duration": 230.81398010253906
+        },
+        "Mixed sequential operations": {
+            "passed": true,
+            "duration": 212.88681030273438
+        },
+        "Connect to gRPC server": {
+            "passed": true,
+            "duration": 26.278018951416016
+        },
+        "gRPC: Register worker": {
+            "passed": true,
+            "duration": 574.2521286010742
+        },
+        "gRPC: Enqueue job": {
+            "passed": true,
+            "duration": 493.2079315185547
+        },
+        "gRPC: Dequeue job": {
+            "passed": true,
+            "duration": 488.94786834716797
+        },
+        "gRPC: Get queue stats": {
+            "passed": true,
+            "duration": 487.17498779296875
+        },
+        "gRPC: Complete job": {
+            "passed": true,
+            "duration": 1479.0871143341064
+        },
+        "gRPC: Heartbeat": {
+            "passed": true,
+            "duration": 489.17508125305176
+        },
+        "gRPC: Deregister worker": {
+            "passed": true,
+            "duration": 533.9088439941406
+        },
+        "gRPC: Job lifecycle via gRPC": {
+            "passed": true,
+            "duration": 2530.478000640869
+        },
+        "gRPC: Fail job with retry": {
+            "passed": true,
+            "duration": 3633.4469318389893
+        },
+        "gRPC: Fail - no retry (to deadletter)": {
+            "passed": true,
+            "duration": 3671.8289852142334
+        },
+        "gRPC: Fail - with long error message": {
+            "passed": true,
+            "duration": 3834.3489170074463
+        },
+        "gRPC: Heartbeat with different statuses": {
+            "passed": true,
+            "duration": 4802.3841381073
+        },
+        "gRPC: GetQueueStats - queue with mixed statuses": {
+            "passed": true,
+            "duration": 9482.311010360718
+        },
+        "gRPC: Complete with complex result": {
+            "passed": true,
+            "duration": 5938.5950565338135
+        },
+        "gRPC: RenewLease - wrong worker ID fails": {
+            "passed": true,
+            "duration": 5979.053974151611
+        },
+        "gRPC Advanced: Connect": {
+            "passed": true,
+            "duration": 0.34499168395996094
+        },
+        "gRPC: GetJob - existing job": {
+            "passed": true,
+            "duration": 758.6030960083008
+        },
+        "gRPC: GetJob - non-existent job": {
+            "passed": true,
+            "duration": 718.3349132537842
+        },
+        "gRPC: Enqueue with idempotency key": {
+            "passed": true,
+            "duration": 1454.509973526001
+        },
+        "gRPC: Batch dequeue multiple jobs": {
+            "passed": true,
+            "duration": 8640.730857849121
+        },
+        "gRPC: RenewLease - extend lease": {
+            "passed": true,
+            "duration": 6699.23210144043
+        },
+        "gRPC: Complex nested payload": {
+            "passed": true,
+            "duration": 1194.9729919433594
+        },
+        "gRPC: Large payload": {
+            "passed": true,
+            "duration": 1213.163137435913
+        },
+        "gRPC: Scheduled job in future": {
+            "passed": true,
+            "duration": 1196.890115737915
+        },
+        "gRPC: Worker with metadata": {
+            "passed": true,
+            "duration": 2576.8468379974365
+        },
+        "gRPC: GetQueueStats - empty queue": {
+            "passed": true,
+            "duration": 1401.853084564209
+        },
+        "gRPC: Jobs dequeued by priority": {
+            "passed": true,
+            "duration": 11376.927137374878
+        },
+        "gRPC Error: Connect": {
+            "passed": true,
+            "duration": 0.3190040588378906
+        },
+        "gRPC Error: Invalid queue name (empty)": {
+            "passed": true,
+            "duration": 1399.827003479004
+        },
+        "gRPC Error: Invalid queue name (special chars)": {
+            "passed": true,
+            "duration": 1398.573875427246
+        },
+        "gRPC Error: Dequeue without worker ID": {
+            "passed": true,
+            "duration": 1499.0551471710205
+        },
+        "gRPC Error: Complete non-existent job": {
+            "passed": true,
+            "duration": 0.030994415283203125
+        },
+        "gRPC Error: Invalid API key": {
+            "passed": true,
+            "duration": 0.010013580322265625
+        },
+        "gRPC Error: Heartbeat for unknown worker": {
+            "passed": true,
+            "duration": 1399.5089530944824
+        },
+        "gRPC Error: Deregister unknown worker": {
+            "passed": true,
+            "duration": 1409.4510078430176
+        },
+        "gRPC Tier: Test with main org": {
+            "passed": true,
+            "duration": 4247.122049331665
+        }
+    }
+}

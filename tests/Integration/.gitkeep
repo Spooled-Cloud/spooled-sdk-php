@@ -1,0 +1,4 @@
+# Integration tests go here
+# These tests require API_KEY and BASE_URL environment variables
+
+

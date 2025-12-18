@@ -1,0 +1,43 @@
+parameters:
+    level: 6
+    paths:
+        - src
+    excludePaths:
+        - src/Grpc/Stubs
+    reportUnmatchedIgnoredErrors: false
+    treatPhpDocTypesAsCertain: false
+    ignoreErrors:
+        # Allow dynamic property access for DTOs during hydration
+        - '#Access to an undefined property#'
+        # Suppress errors for optional gRPC classes
+        -
+            message: '#Class Grpc\\#'
+            path: src/Grpc/*
+        -
+            message: '#Class Google\\Protobuf\\#'
+            path: src/Grpc/*
+        -
+            message: '#Instantiated class \\Spooled\\Grpc\\Stubs\\#'
+            path: src/Grpc/*
+        # Suppress errors for optional Ratchet WebSocket classes
+        -
+            message: '#Ratchet\\#'
+            path: src/Realtime/*
+        # Allow never-read properties for optional features
+        -
+            identifier: property.onlyWritten
+        # Allow missing iterableValue types
+        -
+            identifier: missingType.iterableValue
+        # Allow missing generic types
+        -
+            identifier: missingType.generics
+        # Allow return type covariance for array type hints
+        -
+            message: '#should return array\{.*\} but returns array<string, mixed>#'
+        # Allow unreachable code warnings in certain utility functions  
+        -
+            message: '#Else branch is unreachable because ternary operator condition is always true#'
+            path: src/Util/*
+        -
+            message: '#always exists and is not nullable#'

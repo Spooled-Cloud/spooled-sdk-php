@@ -1,30 +1,37 @@
+# Dependencies
 /vendor/
-node_modules/
-npm-debug.log
-yarn-error.log
 
-# Laravel 4 specific
-bootstrap/compiled.php
-app/storage/
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
-# Laravel 5 & Lumen specific
-public/storage
-public/hot
+# Cache and build artifacts
+.phpunit.cache/
+.php-cs-fixer.cache
+.phpstan.cache/
+coverage/
 
-# Laravel 5 & Lumen specific with changed public path
-public_html/storage
-public_html/hot
+# Logs
+*.log
 
-storage/*.key
+# Environment files
 .env
-Homestead.yaml
-Homestead.json
-/.vagrant
-.phpunit.result.cache
+.env.local
+.env.*.local
 
-/public/build
-/storage/pail
-.env.backup
-.env.production
-.phpactor.json
-auth.json
+# Generated gRPC stubs (committed separately)
+# src/Grpc/Stubs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Composer
+composer.phar
+composer.lock
+
+# Test output
+phpunit.xml.bak
