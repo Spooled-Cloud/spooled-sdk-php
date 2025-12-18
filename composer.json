@@ -64,12 +64,12 @@
         }
     },
     "scripts": {
-        "test": "phpunit --testsuite=unit",
-        "test:unit": "phpunit --testsuite=unit",
-        "test:integration": "phpunit --testsuite=integration",
-        "test:scripts": "phpunit --testsuite=scripts",
+        "test": "phpunit --testsuite=unit --no-coverage",
+        "test:unit": "phpunit --testsuite=unit --no-coverage",
+        "test:integration": "phpunit --testsuite=integration --no-coverage",
+        "test:scripts": "phpunit --testsuite=scripts --no-coverage",
         "test:coverage": "phpunit --testsuite=unit --coverage-html coverage --coverage-text",
-        "test:all": "phpunit",
+        "test:all": "phpunit --no-coverage",
         "analyse": "phpstan analyse",
         "format": "php-cs-fixer fix",
         "format:check": "php-cs-fixer fix --dry-run --diff",

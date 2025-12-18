@@ -5,12 +5,13 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.1] - 2024-12-18
+## [1.0.2] - 2024-12-18
 
 ### Fixed
 - Fixed PHP CS Fixer code style issues (import statements, string quotes)
 - Added missing `@group grpc` and `@group realtime` test annotations for CI
 - Added unit tests for gRPC options and SSE event parsing
+- Fixed CI exit code issue by adding `--no-coverage` to composer test scripts
 
 ### Added
 - `tests/Unit/Grpc/GrpcClientTest.php` - gRPC options unit tests
