@@ -137,7 +137,11 @@ $job = $client->jobs->create([
 $job = $client->jobs->get($job->id);
 
 // List jobs
-$jobs = $client->jobs->list(['queue' => 'my-queue', 'status' => 'pending']);
+$jobs = $client->jobs->list([
+    'queue' => 'my-queue',
+    'status' => 'pending',
+    'tag' => 'billing',  // Optional: filter by a single tag
+]);
 
 // Cancel a job
 $client->jobs->cancel($job->id);
