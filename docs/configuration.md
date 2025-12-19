@@ -309,4 +309,3 @@ Close the client when done to release resources:
 // Close the client (closes gRPC connections, etc.)
 $client->close();
 ```
-

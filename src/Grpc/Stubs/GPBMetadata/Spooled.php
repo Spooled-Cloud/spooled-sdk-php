@@ -24,4 +24,3 @@ class Spooled
         static::$is_initialized = true;
     }
 }
-

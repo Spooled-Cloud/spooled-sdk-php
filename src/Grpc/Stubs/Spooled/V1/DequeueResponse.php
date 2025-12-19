@@ -58,4 +58,3 @@ class DequeueResponse extends \Google\Protobuf\Internal\Message
     }
 
 }
-

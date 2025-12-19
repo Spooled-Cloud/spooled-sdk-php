@@ -112,4 +112,3 @@ class RegisterWorkerResponse extends \Google\Protobuf\Internal\Message
     }
 
 }
-

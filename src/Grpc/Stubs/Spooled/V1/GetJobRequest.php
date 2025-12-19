@@ -58,4 +58,3 @@ class GetJobRequest extends \Google\Protobuf\Internal\Message
     }
 
 }
-

@@ -122,4 +122,3 @@ class CompleteRequest extends \Google\Protobuf\Internal\Message
     }
 
 }
-

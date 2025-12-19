@@ -180,4 +180,3 @@ class ProcessResponse extends \Google\Protobuf\Internal\Message
     }
 
 }
-

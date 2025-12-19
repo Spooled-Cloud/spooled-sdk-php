@@ -152,4 +152,3 @@ class ProcessRequest extends \Google\Protobuf\Internal\Message
     }
 
 }
-

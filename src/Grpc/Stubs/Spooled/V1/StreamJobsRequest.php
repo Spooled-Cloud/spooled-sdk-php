@@ -112,4 +112,3 @@ class StreamJobsRequest extends \Google\Protobuf\Internal\Message
     }
 
 }
-

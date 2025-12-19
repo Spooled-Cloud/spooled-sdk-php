@@ -65,4 +65,3 @@ echo "Schedule resumed: " . ($resumed->paused ? 'still paused' : 'active') . "\n
 // Clean up - delete the schedule
 $client->schedules->delete($schedule->id);
 echo "\nSchedule deleted.\n";
-

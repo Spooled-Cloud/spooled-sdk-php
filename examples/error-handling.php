@@ -301,4 +301,3 @@ $job = withRetry(function () use ($client) {
 */
 
 echo "\n=== Error Handling Examples Complete ===\n";
-

@@ -709,4 +709,3 @@ $client->ingest->stripe(
     $signatureHeader  // Stripe-Signature
 );
 ```
-

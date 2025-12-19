@@ -193,4 +193,3 @@ class RegisterWorkerRequest extends \Google\Protobuf\Internal\Message
     }
 
 }
-

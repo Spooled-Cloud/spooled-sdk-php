@@ -146,4 +146,3 @@ class FailRequest extends \Google\Protobuf\Internal\Message
     }
 
 }
-

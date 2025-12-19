@@ -85,4 +85,3 @@ class ErrorResponse extends \Google\Protobuf\Internal\Message
     }
 
 }
-

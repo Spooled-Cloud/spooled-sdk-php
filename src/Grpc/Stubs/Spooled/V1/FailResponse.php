@@ -112,4 +112,3 @@ class FailResponse extends \Google\Protobuf\Internal\Message
     }
 
 }
-

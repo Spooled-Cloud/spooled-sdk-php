@@ -281,4 +281,3 @@ class GetQueueStatsResponse extends \Google\Protobuf\Internal\Message
     }
 
 }
-

@@ -102,4 +102,3 @@ return (new PhpCsFixer\Config())
     ])
     ->setFinder($finder)
     ->setCacheFile(__DIR__ . '/.php-cs-fixer.cache');
-

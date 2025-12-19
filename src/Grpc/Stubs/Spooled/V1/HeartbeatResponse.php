@@ -92,4 +92,3 @@ class HeartbeatResponse extends \Google\Protobuf\Internal\Message
     }
 
 }
-

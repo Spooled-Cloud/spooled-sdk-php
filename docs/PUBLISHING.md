@@ -151,4 +151,3 @@ git tag release-1.0.0
 - [Composer Versioning](https://getcomposer.org/doc/articles/versions.md)
 - [Semantic Versioning](https://semver.org/)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
-

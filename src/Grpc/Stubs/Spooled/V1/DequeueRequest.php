@@ -146,4 +146,3 @@ class DequeueRequest extends \Google\Protobuf\Internal\Message
     }
 
 }
-

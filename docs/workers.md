@@ -496,4 +496,3 @@ stdout_logfile=/var/log/supervisor/spooled-worker.log
 stderr_logfile=/var/log/supervisor/spooled-worker-error.log
 environment=SPOOLED_API_KEY="sk_live_...",APP_ENV="production"
 ```
-

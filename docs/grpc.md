@@ -509,4 +509,3 @@ The proto file is available at:
 Key services:
 - `QueueService`: Enqueue, Dequeue, Complete, Fail, RenewLease, GetQueueStats, GetJob
 - `WorkerService`: Register, Deregister, Heartbeat
-

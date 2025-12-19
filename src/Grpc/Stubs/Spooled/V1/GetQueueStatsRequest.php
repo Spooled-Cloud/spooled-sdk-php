@@ -58,4 +58,3 @@ class GetQueueStatsRequest extends \Google\Protobuf\Internal\Message
     }
 
 }
-

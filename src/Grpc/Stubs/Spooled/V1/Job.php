@@ -587,4 +587,3 @@ class Job extends \Google\Protobuf\Internal\Message
     }
 
 }
-

@@ -58,4 +58,3 @@ class DeregisterResponse extends \Google\Protobuf\Internal\Message
     }
 
 }
-

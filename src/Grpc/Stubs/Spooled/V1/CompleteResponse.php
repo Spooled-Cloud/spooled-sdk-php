@@ -58,4 +58,3 @@ class CompleteResponse extends \Google\Protobuf\Internal\Message
     }
 
 }
-
