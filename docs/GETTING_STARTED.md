@@ -261,4 +261,4 @@ $jobs = $client->workflows->jobs->list($workflow->id);
 
 - See the [examples](../examples/) directory for more usage examples
 - Check the [README](../README.md) for complete API reference
-- Learn about [webhooks](https://docs.spooled.cloud/webhooks) and [realtime events](https://docs.spooled.cloud/realtime)
+- Learn about [webhooks](https://spooled.cloud/docs/webhooks) and [realtime events](https://spooled.cloud/docs/realtime)
