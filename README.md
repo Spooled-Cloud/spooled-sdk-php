@@ -2,6 +2,8 @@
 
 Official PHP SDK for [Spooled Cloud](https://spooled.cloud) - a modern job queue service for distributed applications.
 
+[**Live Demo (SpriteForge)**](https://example.spooled.cloud) • [Documentation](https://spooled.cloud/docs)
+
 [![Latest Version on Packagist](https://img.shields.io/packagist/v/spooled-cloud/spooled.svg)](https://packagist.org/packages/spooled-cloud/spooled)
 [![PHP Version](https://img.shields.io/badge/php-%5E8.2-blue.svg)](https://www.php.net/)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green.svg)](LICENSE)
