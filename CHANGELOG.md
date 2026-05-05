@@ -5,6 +5,36 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.7] - 2025-12-21
+
+### Changed
+
+- Added Live Demo (SpriteForge) link to README
+
+## [1.0.6] - 2025-12-20
+
+### Fixed
+
+- Corrected docs URL to spooled.cloud/docs
+
+## [1.0.5] - 2025-12-19
+
+### Changed
+
+- Added tag filtering example for job listing in README
+
+## [1.0.4] - 2025-12-19
+
+### Fixed
+
+- Removed trailing newlines across source files, docs, and CI config
+
+## [1.0.3] - 2025-12-18
+
+### Fixed
+
+- Use fake test keys (`sp_test_*`) in gRPC tests to avoid GitHub push protection
+
 ## [1.0.2] - 2025-01-18
 
 ### Fixed
