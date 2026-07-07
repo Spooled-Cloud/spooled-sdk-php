@@ -61,7 +61,7 @@ use Spooled\Config\ClientOptions;
 
 // Create client with API key
 $client = new SpooledClient(
-    new ClientOptions(apiKey: 'sk_live_your_api_key')
+    new ClientOptions(apiKey: 'sp_live_your_api_key')
 );
 
 // Create a job
@@ -171,7 +171,7 @@ use Spooled\Worker\SpooledWorker;
 use Spooled\Worker\JobContext;
 
 $client = new SpooledClient(
-    new ClientOptions(apiKey: 'sk_live_your_api_key')
+    new ClientOptions(apiKey: 'sp_live_your_api_key')
 );
 
 $worker = new SpooledWorker($client, [
@@ -272,7 +272,7 @@ use Spooled\SpooledClient;
 use Spooled\Config\ClientOptions;
 
 $client = new SpooledClient(new ClientOptions(
-    apiKey: 'sk_live_your_api_key',
+    apiKey: 'sp_live_your_api_key',
 ));
 
 // Get unified realtime client (auto-selects best transport)
@@ -309,7 +309,7 @@ use Spooled\Realtime\SseClient;
 
 $sse = new SseClient(
     baseUrl: 'https://api.spooled.cloud',
-    apiKey: 'sk_live_your_api_key',
+    apiKey: 'sp_live_your_api_key',
 );
 
 // Register event handlers
@@ -520,7 +520,7 @@ use Spooled\Config\CircuitBreakerConfig;
 
 $client = new SpooledClient(new ClientOptions(
     // Authentication (one of these)
-    apiKey: 'sk_live_...',
+    apiKey: 'sp_live_...',
     // accessToken: 'jwt-token',
     // adminKey: 'admin-key',
     
@@ -603,7 +603,7 @@ use Spooled\Config\ClientOptions;
 
 // Requires ext-grpc and ext-protobuf
 $client = new SpooledClient(new ClientOptions(
-    apiKey: 'sk_live_your_api_key',
+    apiKey: 'sp_live_your_api_key',
     grpcAddress: 'grpc.spooled.cloud:443',
 ));
 
@@ -655,7 +655,7 @@ use Spooled\Grpc\GrpcOptions;
 
 $grpc = new SpooledGrpcClient(new GrpcOptions(
     address: 'grpc.spooled.cloud:443',
-    apiKey: 'sk_live_your_api_key',
+    apiKey: 'sp_live_your_api_key',
     secure: true,
 ));
 
