@@ -10,6 +10,10 @@ use PHPUnit\Framework\TestCase;
 use RuntimeException;
 use Spooled\Config\CircuitBreakerConfig;
 use Spooled\Errors\CircuitBreakerOpenError;
+use Spooled\Errors\NetworkError;
+use Spooled\Errors\RateLimitError;
+use Spooled\Errors\SpooledError;
+use Spooled\Errors\ValidationError;
 use Spooled\Util\CircuitBreaker;
 
 #[CoversClass(CircuitBreaker::class)]
@@ -139,6 +143,83 @@ final class CircuitBreakerTest extends TestCase
                 throw new RuntimeException('Test error');
             });
         } catch (RuntimeException) {
+            // Expected
+        }
+
+        $this->assertSame(1, $cb->getFailureCount());
+    }
+
+    #[Test]
+    public function it_does_not_count_4xx_client_errors_as_failures(): void
+    {
+        $config = new CircuitBreakerConfig(enabled: true, failureThreshold: 3);
+        $cb = new CircuitBreaker($config);
+
+        // 400/404/422 are client errors and must not trip the breaker.
+        foreach ([
+            new SpooledError('Bad request', 400),
+            new SpooledError('Not found', 404),
+            new ValidationError('Invalid', null, [], null, null),
+        ] as $error) {
+            try {
+                $cb->execute(function () use ($error): void {
+                    throw $error;
+                });
+            } catch (SpooledError) {
+                // Expected — error propagates but is not recorded.
+            }
+        }
+
+        $this->assertSame(0, $cb->getFailureCount());
+        $this->assertSame(CircuitBreaker::STATE_CLOSED, $cb->getState());
+    }
+
+    #[Test]
+    public function it_counts_429_rate_limit_as_a_failure(): void
+    {
+        $config = new CircuitBreakerConfig(enabled: true, failureThreshold: 3);
+        $cb = new CircuitBreaker($config);
+
+        try {
+            $cb->execute(function (): void {
+                throw new RateLimitError('Too many requests');
+            });
+        } catch (RateLimitError) {
+            // Expected
+        }
+
+        $this->assertSame(1, $cb->getFailureCount());
+    }
+
+    #[Test]
+    public function it_counts_network_errors_as_failures(): void
+    {
+        $config = new CircuitBreakerConfig(enabled: true, failureThreshold: 3);
+        $cb = new CircuitBreaker($config);
+
+        // Network errors have no HTTP status (statusCode 0) and should trip.
+        try {
+            $cb->execute(function (): void {
+                throw new NetworkError('Connection failed');
+            });
+        } catch (NetworkError) {
+            // Expected
+        }
+
+        $this->assertSame(1, $cb->getFailureCount());
+    }
+
+    #[Test]
+    public function it_counts_5xx_server_errors_as_failures(): void
+    {
+        $config = new CircuitBreakerConfig(enabled: true, failureThreshold: 3);
+        $cb = new CircuitBreaker($config);
+
+        try {
+            $cb->execute(function (): void {
+                throw new SpooledError('Server error', 503);
+            });
+        } catch (SpooledError) {
             // Expected
         }
 

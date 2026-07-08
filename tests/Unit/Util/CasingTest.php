@@ -225,4 +225,70 @@ final class CasingTest extends TestCase
 
         $this->assertSame($expected, Casing::keysToSnakeCase($input));
     }
+
+    #[Test]
+    public function it_preserves_opaque_payload_keys_when_snake_casing(): void
+    {
+        $input = [
+            'queueName' => 'emails',
+            'maxRetries' => 3,
+            'payload' => [
+                'firstName' => 'John',
+                'userID' => 'abc',
+                'nested' => ['streetName' => 'Main St'],
+            ],
+        ];
+
+        $result = Casing::keysToSnakeCase($input);
+
+        // Envelope keys are converted...
+        $this->assertArrayHasKey('queue_name', $result);
+        $this->assertArrayHasKey('max_retries', $result);
+        // ...but the opaque payload subtree is byte-for-byte untouched.
+        $this->assertSame([
+            'firstName' => 'John',
+            'userID' => 'abc',
+            'nested' => ['streetName' => 'Main St'],
+        ], $result['payload']);
+    }
+
+    #[Test]
+    public function it_preserves_opaque_result_and_metadata_keys(): void
+    {
+        $input = [
+            'result' => ['outputFile' => 'a.png', 'sizeBytes' => 10],
+            'metadata' => ['traceID' => 'xyz'],
+        ];
+
+        $this->assertSame($input, Casing::keysToSnakeCase($input));
+        $this->assertSame($input, Casing::keysToCamelCase($input));
+    }
+
+    #[Test]
+    public function it_does_not_camel_case_inside_payload_on_response(): void
+    {
+        $input = [
+            'queue_name' => 'emails',
+            'payload' => ['user_ID' => '1', 'first_name' => 'John'],
+        ];
+
+        $result = Casing::keysToCamelCase($input);
+
+        $this->assertArrayHasKey('queueName', $result);
+        // Payload keys are preserved exactly as the server stored them.
+        $this->assertSame(['user_ID' => '1', 'first_name' => 'John'], $result['payload']);
+    }
+
+    #[Test]
+    public function payload_round_trips_losslessly(): void
+    {
+        // The bug: userID -> user_id -> userId (case lost). With payload
+        // excluded from conversion, the value survives a full round-trip.
+        $body = ['payload' => ['userID' => '42', 'HTTPStatus' => 200]];
+
+        $sent = Casing::keysToSnakeCase($body);
+        $readBack = Casing::keysToCamelCase($sent);
+
+        $this->assertSame($body['payload'], $readBack['payload']);
+    }
 }

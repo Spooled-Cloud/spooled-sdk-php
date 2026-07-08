@@ -132,12 +132,40 @@ final class WebSocketClient
             );
         }
 
+        // The /api/v1/ws endpoint only authenticates a JWT in ?token=. A raw
+        // API key is not accepted there; it must first be exchanged for an
+        // access token via POST /api/v1/auth/login.
+        if ($this->accessToken === null || $this->accessToken === '') {
+            $hint = ($this->apiKey !== null && $this->apiKey !== '')
+                ? ' An API key was provided, but the WebSocket endpoint only accepts a JWT;'
+                    . ' exchange it for an access token via POST /api/v1/auth/login first.'
+                : '';
+
+            throw new RuntimeException(
+                'WebSocket authentication requires a JWT access token (?token=).' . $hint,
+            );
+        }
+
         $this->running = true;
 
+        // Establish the connection, then run the event loop exactly once.
+        // Reconnection re-establishes the connection on the already-running
+        // loop (see scheduleReconnect) and must NOT call run() again.
+        $this->openConnection();
+
+        \React\EventLoop\Loop::get()->run();
+    }
+
+    /**
+     * Open a WebSocket connection on the shared React event loop without
+     * running the loop. Safe to call from a reconnect timer.
+     */
+    private function openConnection(): void
+    {
         $url = $this->buildUrl();
         $this->logger->info('Connecting to WebSocket', ['url' => $url]);
 
-        // Use React event loop and Ratchet client
+        // Use the shared React event loop and Ratchet client
         $loop = \React\EventLoop\Loop::get();
         $connector = new \Ratchet\Client\Connector($loop);
 
@@ -174,8 +202,6 @@ final class WebSocketClient
                 }
             },
         );
-
-        $loop->run();
     }
 
     /**
@@ -279,7 +305,10 @@ final class WebSocketClient
         $loop = \React\EventLoop\Loop::get();
         $loop->addTimer($delay / 1000, function (): void {
             if ($this->running) {
-                $this->connect();
+                // Re-establish on the already-running loop. Do NOT call
+                // connect() here: that would invoke Loop::run() a second time
+                // while the outer run() is still on the stack.
+                $this->openConnection();
             }
         });
     }
@@ -290,16 +319,12 @@ final class WebSocketClient
     private function buildUrl(): string
     {
         $url = $this->wsUrl . '/api/v1/ws';
-        $params = [];
 
+        // The backend /ws endpoint authenticates only a JWT in ?token=.
+        // connect() guarantees an access token is present; there is no
+        // api_key fallback because the endpoint does not accept it.
         if ($this->accessToken !== null && $this->accessToken !== '') {
-            $params['token'] = $this->accessToken;
-        } elseif ($this->apiKey !== null && $this->apiKey !== '') {
-            $params['api_key'] = $this->apiKey;
-        }
-
-        if ($params !== []) {
-            $url .= '?' . http_build_query($params);
+            $url .= '?' . http_build_query(['token' => $this->accessToken]);
         }
 
         return $url;

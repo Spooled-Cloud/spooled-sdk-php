@@ -5,6 +5,21 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.9] - 2026-07-08
+
+### Fixed
+
+- **Opaque job payloads were corrupted**: the client recursively snake_cased/
+  camelCased the entire request/response, mangling user `payload`/`result`/
+  `metadata` keys and breaking cross-SDK interop. Those subtrees are now sent
+  byte-for-byte.
+- **Circuit breaker** tripped on every 4xx (it checked a non-existent method); it now
+  only counts 429/5xx/network errors.
+- **SSE** authenticates with `Authorization: Bearer` (the backend ignores `X-API-Key`).
+- **WebSocket** connects only with a JWT `?token=` and fails loudly if no access token
+  is available (the ignored `?api_key=` fallback was removed).
+- **Reconnect** no longer re-enters the React event loop (`Loop::run()`).
+
 ## [1.0.8] - 2026-07-07
 
 ### Security

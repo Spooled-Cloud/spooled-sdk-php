@@ -354,10 +354,12 @@ final class SseClient
             'Cache-Control' => 'no-cache',
         ];
 
+        // Data-plane auth: the backend reads `Authorization: Bearer <token>`
+        // (a JWT or a raw API key). It does NOT read X-API-Key for SSE.
         if ($this->accessToken !== null && $this->accessToken !== '') {
             $headers['Authorization'] = 'Bearer ' . $this->accessToken;
         } elseif ($this->apiKey !== null && $this->apiKey !== '') {
-            $headers['X-API-Key'] = $this->apiKey;
+            $headers['Authorization'] = 'Bearer ' . $this->apiKey;
         }
 
         return $headers;

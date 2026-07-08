@@ -6,6 +6,7 @@ namespace Spooled\Util;
 
 use Spooled\Config\CircuitBreakerConfig;
 use Spooled\Errors\CircuitBreakerOpenError;
+use Spooled\Errors\SpooledError;
 use Throwable;
 
 /**
@@ -219,16 +220,17 @@ final class CircuitBreaker
      */
     private function isRetryableError(Throwable $e): bool
     {
-        // Don't trigger circuit breaker for client errors (4xx except 429)
-        if (method_exists($e, 'getStatusCode')) {
-            $status = $e->getStatusCode();
+        // SpooledError exposes the HTTP status via the public $statusCode
+        // property (0 when there is no HTTP response, e.g. network/timeout).
+        $status = $e instanceof SpooledError ? $e->statusCode : ($e->getCode() ?: null);
 
-            // 429 (rate limit) should trigger circuit breaker
+        if ($status !== null) {
+            // 429 (rate limit) should trigger the circuit breaker.
             if ($status === 429) {
                 return true;
             }
 
-            // Other 4xx errors are client errors, don't trigger
+            // Other 4xx are client errors: don't trip or count against the breaker.
             if ($status >= 400 && $status < 500) {
                 return false;
             }

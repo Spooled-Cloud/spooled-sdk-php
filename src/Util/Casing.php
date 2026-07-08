@@ -10,6 +10,31 @@ namespace Spooled\Util;
 final class Casing
 {
     /**
+     * Keys whose values are opaque, user-defined JSON and must be transmitted
+     * byte-for-byte. Only the key itself is re-cased; the value subtree is left
+     * untouched in both directions.
+     *
+     * Mirrors the Node SDK's SKIP_CONVERSION_KEYS. Both camelCase and snake_case
+     * spellings are listed so the check works on the request (camel) and the
+     * response (snake) side.
+     *
+     * @var array<string, true>
+     */
+    private const SKIP_CONVERSION_KEYS = [
+        'payload' => true,
+        'result' => true,
+        'metadata' => true,
+        'tags' => true,
+        'settings' => true,
+        'details' => true,
+        'extra' => true,
+        'payloadTemplate' => true,
+        'payload_template' => true,
+        'customLimits' => true,
+        'custom_limits' => true,
+    ];
+
+    /**
      * Convert a string from camelCase to snake_case.
      */
     public static function toSnakeCase(string $input): string
@@ -39,6 +64,14 @@ final class Casing
 
         foreach ($data as $key => $value) {
             $newKey = is_string($key) ? self::toSnakeCase($key) : $key;
+
+            // Opaque user data (payload/result/metadata/...) is preserved
+            // byte-for-byte: rename the envelope key but never recurse the value.
+            if (self::shouldSkipConversion($key, $newKey)) {
+                $result[$newKey] = $value;
+
+                continue;
+            }
 
             if (is_array($value)) {
                 // Check if it's an associative array or a list
@@ -73,6 +106,14 @@ final class Casing
         foreach ($data as $key => $value) {
             $newKey = is_string($key) ? self::toCamelCase($key) : $key;
 
+            // Opaque user data (payload/result/metadata/...) is preserved
+            // byte-for-byte: rename the envelope key but never recurse the value.
+            if (self::shouldSkipConversion($key, $newKey)) {
+                $result[$newKey] = $value;
+
+                continue;
+            }
+
             if (is_array($value)) {
                 // Check if it's an associative array or a list
                 if (self::isAssociativeArray($value)) {
@@ -91,6 +132,17 @@ final class Casing
         }
 
         return $result;
+    }
+
+    /**
+     * Determine whether the value under a key is opaque, pass-through data
+     * whose nested keys must not be re-cased. The original and converted key
+     * spellings are both checked so it works in both conversion directions.
+     */
+    private static function shouldSkipConversion(int|string $key, int|string $newKey): bool
+    {
+        return (is_string($key) && isset(self::SKIP_CONVERSION_KEYS[$key]))
+            || (is_string($newKey) && isset(self::SKIP_CONVERSION_KEYS[$newKey]));
     }
 
     /**
