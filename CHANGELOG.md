@@ -5,6 +5,24 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.10] - 2026-07-08
+
+### Fixed
+
+- **Schedules could not be created**: `SchedulesResource::create()` (and
+  `update()`) sent the SDK's documented parameter aliases through unmapped, so
+  every schedules example in the README failed with HTTP 422. The aliases
+  `queue`, `schedule`/`cron` and `payload` are now mapped to the API's
+  `queue_name`, `cron_expression` and `payload_template` fields, mirroring how
+  `JobsResource::create()` maps `queue`. The canonical field names
+  (`queueName`/`cronExpression`/`payloadTemplate`) still pass through unchanged.
+- **`schedules->create()` returned a Schedule with `timezone = null`**: the
+  create endpoint returns only `{id, name, cron_expression, next_run_at}` and
+  never echoes `timezone` (nor `queue_name`/`payload_template`). Those fields are
+  now backfilled from the request so the returned Schedule matches a follow-up
+  `schedules->get()`; `timezone` falls back to the backend default `UTC` when the
+  caller omits it.
+
 ## [1.0.9] - 2026-07-08
 
 ### Fixed
