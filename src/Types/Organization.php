@@ -83,9 +83,15 @@ final readonly class OrganizationList
      */
     public static function fromArray(array $data): self
     {
+        // Handle both wrapped and raw array responses.
+        // Wrapped: { "organizations": [...], "total": 10 }
+        // Raw: [ {...}, {...}, ... ] (the shape GET /api/v1/organizations returns)
+        $isRawArray = isset($data[0]) && is_array($data[0]);
+        $organizationsData = $isRawArray ? $data : ($data['organizations'] ?? $data['data'] ?? []);
+
         $organizations = array_map(
             fn (array $item) => Organization::fromArray($item),
-            $data['organizations'] ?? $data['data'] ?? [],
+            $organizationsData,
         );
 
         return new self(

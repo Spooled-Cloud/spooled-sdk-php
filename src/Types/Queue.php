@@ -84,9 +84,15 @@ final readonly class QueueList
      */
     public static function fromArray(array $data): self
     {
+        // Handle both wrapped and raw array responses.
+        // Wrapped: { "queues": [...], "total": 10 }
+        // Raw: [ {...}, {...}, ... ] (the shape GET /api/v1/queues returns)
+        $isRawArray = isset($data[0]) && is_array($data[0]);
+        $queuesData = $isRawArray ? $data : ($data['queues'] ?? $data['data'] ?? []);
+
         $queues = array_map(
             fn (array $item) => Queue::fromArray($item),
-            $data['queues'] ?? $data['data'] ?? [],
+            $queuesData,
         );
 
         return new self(

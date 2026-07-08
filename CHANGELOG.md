@@ -5,6 +5,25 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.11] - 2026-07-08
+
+### Fixed
+
+- **`schedules->list()` always returned an empty list**: the API
+  `GET /api/v1/schedules` responds with a bare top-level JSON array
+  (`[{...}, {...}]`), but `ScheduleList::fromArray()` only read the wrapped keys
+  (`schedules`/`data`), which are absent for a bare array. Existing schedules
+  were therefore silently invisible to SDK users, with no error raised. Confirmed
+  by a live production test. `ScheduleList::fromArray()` now detects a bare array
+  and parses it, mirroring the handling already present in `JobList` and
+  `WorkflowList`, while still supporting the wrapped `{"schedules": [...]}` shape.
+- **Same silent-empty-list bug in sibling list types**: the backend list
+  endpoints for API keys, queues, workers, outgoing webhooks, webhook deliveries
+  and organizations all return bare top-level arrays as well. `ApiKeyList`,
+  `QueueList`, `WorkerList`, `WebhookList`, `WebhookDeliveryList` and
+  `OrganizationList` `fromArray()` methods now handle the bare-array shape too.
+  (`JobList` and `WorkflowList` already handled it and were left unchanged.)
+
 ## [1.0.10] - 2026-07-08
 
 ### Fixed

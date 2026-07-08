@@ -95,9 +95,15 @@ final readonly class WorkerList
      */
     public static function fromArray(array $data): self
     {
+        // Handle both wrapped and raw array responses.
+        // Wrapped: { "workers": [...], "total": 10 }
+        // Raw: [ {...}, {...}, ... ] (the shape GET /api/v1/workers returns)
+        $isRawArray = isset($data[0]) && is_array($data[0]);
+        $workersData = $isRawArray ? $data : ($data['workers'] ?? $data['data'] ?? []);
+
         $workers = array_map(
             fn (array $item) => Worker::fromArray($item),
-            $data['workers'] ?? $data['data'] ?? [],
+            $workersData,
         );
 
         return new self(

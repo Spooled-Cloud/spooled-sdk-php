@@ -98,9 +98,15 @@ final readonly class ScheduleList
      */
     public static function fromArray(array $data): self
     {
+        // Handle both wrapped and raw array responses.
+        // Wrapped: { "schedules": [...], "total": 10, ... }
+        // Raw: [ {...}, {...}, ... ] (the shape GET /api/v1/schedules returns)
+        $isRawArray = isset($data[0]) && is_array($data[0]);
+        $schedulesData = $isRawArray ? $data : ($data['schedules'] ?? $data['data'] ?? []);
+
         $schedules = array_map(
             fn (array $item) => Schedule::fromArray($item),
-            $data['schedules'] ?? $data['data'] ?? [],
+            $schedulesData,
         );
 
         return new self(

@@ -69,9 +69,15 @@ final readonly class ApiKeyList
      */
     public static function fromArray(array $data): self
     {
+        // Handle both wrapped and raw array responses.
+        // Wrapped: { "apiKeys": [...], "total": 10 }
+        // Raw: [ {...}, {...}, ... ] (the shape GET /api/v1/api-keys returns)
+        $isRawArray = isset($data[0]) && is_array($data[0]);
+        $apiKeysData = $isRawArray ? $data : ($data['apiKeys'] ?? $data['keys'] ?? $data['data'] ?? []);
+
         $apiKeys = array_map(
             fn (array $item) => ApiKey::fromArray($item),
-            $data['apiKeys'] ?? $data['keys'] ?? $data['data'] ?? [],
+            $apiKeysData,
         );
 
         return new self(

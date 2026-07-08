@@ -88,9 +88,15 @@ final readonly class WebhookList
      */
     public static function fromArray(array $data): self
     {
+        // Handle both wrapped and raw array responses.
+        // Wrapped: { "webhooks": [...], "total": 10 }
+        // Raw: [ {...}, {...}, ... ] (the shape GET /api/v1/outgoing-webhooks returns)
+        $isRawArray = isset($data[0]) && is_array($data[0]);
+        $webhooksData = $isRawArray ? $data : ($data['webhooks'] ?? $data['data'] ?? []);
+
         $webhooks = array_map(
             fn (array $item) => Webhook::fromArray($item),
-            $data['webhooks'] ?? $data['data'] ?? [],
+            $webhooksData,
         );
 
         return new self(
@@ -169,9 +175,15 @@ final readonly class WebhookDeliveryList
      */
     public static function fromArray(array $data): self
     {
+        // Handle both wrapped and raw array responses.
+        // Wrapped: { "deliveries": [...], "total": 10, ... }
+        // Raw: [ {...}, {...}, ... ] (the shape GET /api/v1/outgoing-webhooks/{id}/deliveries returns)
+        $isRawArray = isset($data[0]) && is_array($data[0]);
+        $deliveriesData = $isRawArray ? $data : ($data['deliveries'] ?? $data['data'] ?? []);
+
         $deliveries = array_map(
             fn (array $item) => WebhookDelivery::fromArray($item),
-            $data['deliveries'] ?? $data['data'] ?? [],
+            $deliveriesData,
         );
 
         return new self(
