@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Spooled;
 
+use JsonException;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use RuntimeException;
@@ -49,6 +50,12 @@ use Spooled\Resources\WorkflowsResource;
  */
 final class SpooledClient
 {
+    /**
+     * Refresh the realtime JWT this many seconds before it actually expires, so
+     * a token is never used right at the edge of its validity window.
+     */
+    private const TOKEN_EXPIRY_LEEWAY_SECONDS = 60;
+
     /** Jobs resource */
     public readonly JobsResource $jobs;
 
@@ -103,6 +110,20 @@ final class SpooledClient
     private ?SpooledGrpcClient $grpcClient = null;
 
     private ?SpooledRealtime $realtimeClient = null;
+
+    /**
+     * Cached JWT obtained by exchanging the API key for realtime auth.
+     *
+     * Reused across realtime() calls and reconnects until it nears expiry so a
+     * reconnect storm does not hammer POST /api/v1/auth/login (rate limited, 429).
+     */
+    private ?string $cachedRealtimeToken = null;
+
+    /**
+     * Unix timestamp (seconds) at which the cached realtime JWT expires, or null
+     * when it could not be determined.
+     */
+    private ?int $cachedRealtimeTokenExpiresAt = null;
 
     public function __construct(ClientOptions $options)
     {
@@ -239,6 +260,8 @@ final class SpooledClient
      * Lazily create unified realtime client (parity with Node/Python realtime helper).
      *
      * If no access token is set but an API key is available, we will exchange API key for JWT.
+     * The exchanged JWT is cached on this client and reused across realtime() calls and
+     * reconnects until it nears expiry, so reconnect storms do not hammer POST /auth/login.
      */
     public function realtime(): SpooledRealtime
     {
@@ -246,26 +269,123 @@ final class SpooledClient
             return $this->realtimeClient;
         }
 
-        $options = $this->options;
+        $accessToken = $this->resolveRealtimeAccessToken();
 
-        // If we don't have a JWT yet but we have an API key, exchange it for JWT (Node/Python behavior).
-        $accessToken = $this->httpClient->getAccessToken();
-        if (($accessToken === null || $accessToken === '') && $options->apiKey !== null && $options->apiKey !== '') {
-            $login = $this->auth->login($options->apiKey);
-            $this->setAccessToken($login->accessToken);
-            $this->setRefreshToken($login->refreshToken);
-
-            $options = $options->with([
-                'accessToken' => $login->accessToken,
-                'refreshToken' => $login->refreshToken,
-            ]);
-        } elseif ($accessToken !== null && $accessToken !== '') {
-            $options = $options->with(['accessToken' => $accessToken]);
-        }
+        $options = $accessToken !== null && $accessToken !== ''
+            ? $this->options->with(['accessToken' => $accessToken])
+            : $this->options;
 
         $this->realtimeClient = new SpooledRealtime($options, $this->logger);
 
         return $this->realtimeClient;
+    }
+
+    /**
+     * Determine the access token to use for the realtime data plane.
+     *
+     * Preference order:
+     *  1. An access token configured on the client is caller-owned and used verbatim.
+     *  2. A token already present on the HTTP client that we did not exchange ourselves
+     *     (e.g. set via setAccessToken()) is likewise treated as caller-owned.
+     *  3. Otherwise, if an API key is configured, exchange it for a (cached) JWT.
+     */
+    private function resolveRealtimeAccessToken(): ?string
+    {
+        $options = $this->options;
+
+        if ($options->accessToken !== null && $options->accessToken !== '') {
+            return $options->accessToken;
+        }
+
+        $current = $this->httpClient->getAccessToken();
+        if ($current !== null && $current !== '' && $current !== $this->cachedRealtimeToken) {
+            return $current;
+        }
+
+        if ($options->apiKey !== null && $options->apiKey !== '') {
+            return $this->exchangeApiKeyForToken($options->apiKey);
+        }
+
+        return $current;
+    }
+
+    /**
+     * Exchange the API key for a realtime JWT, reusing the cached JWT until it
+     * approaches expiry.
+     *
+     * The JWT `exp` claim is read by base64-decoding the payload segment without
+     * verifying the signature; the token is considered expired
+     * self::TOKEN_EXPIRY_LEEWAY_SECONDS early. A fresh login is performed only
+     * when no JWT is cached or the cached one is at/near expiry.
+     */
+    private function exchangeApiKeyForToken(string $apiKey): string
+    {
+        if (
+            $this->cachedRealtimeToken !== null
+            && $this->cachedRealtimeTokenExpiresAt !== null
+            && $this->cachedRealtimeTokenExpiresAt - self::TOKEN_EXPIRY_LEEWAY_SECONDS > time()
+        ) {
+            return $this->cachedRealtimeToken;
+        }
+
+        $tokens = $this->auth->login($apiKey);
+
+        $this->cachedRealtimeToken = $tokens->accessToken;
+        $this->cachedRealtimeTokenExpiresAt = $this->decodeJwtExpiry($tokens->accessToken)
+            ?? ($tokens->expiresIn !== null ? time() + $tokens->expiresIn : null);
+
+        $this->setAccessToken($tokens->accessToken);
+        if ($tokens->refreshToken !== null && $tokens->refreshToken !== '') {
+            $this->setRefreshToken($tokens->refreshToken);
+        }
+
+        return $tokens->accessToken;
+    }
+
+    /**
+     * Read the `exp` claim (unix seconds) from a JWT without verifying its signature.
+     *
+     * Returns null when the token is not a decodable JWT or has no numeric `exp`.
+     */
+    private function decodeJwtExpiry(string $token): ?int
+    {
+        $parts = explode('.', $token);
+        if (count($parts) < 2) {
+            return null;
+        }
+
+        $payload = $this->base64UrlDecode($parts[1]);
+        if ($payload === null) {
+            return null;
+        }
+
+        try {
+            /** @var mixed $claims */
+            $claims = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            return null;
+        }
+
+        if (!is_array($claims) || !isset($claims['exp']) || !is_numeric($claims['exp'])) {
+            return null;
+        }
+
+        return (int) $claims['exp'];
+    }
+
+    /**
+     * Decode a base64url segment (JWT parts use base64url without padding).
+     */
+    private function base64UrlDecode(string $segment): ?string
+    {
+        $remainder = strlen($segment) % 4;
+        if ($remainder !== 0) {
+            $segment .= str_repeat('=', 4 - $remainder);
+        }
+
+        $decoded = base64_decode(strtr($segment, '-_', '+/'), true);
+
+        return $decoded === false ? null : $decoded;
     }
 
     /**

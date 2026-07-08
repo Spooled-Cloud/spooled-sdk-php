@@ -5,6 +5,23 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.12] - 2026-07-08
+
+### Changed
+
+- **`realtime()` now caches the exchanged JWT instead of logging in on every
+  call/reconnect**: when only an API key is configured, `SpooledClient::realtime()`
+  exchanges it for a JWT via `POST /api/v1/auth/login`. Previously this exchange
+  ran again on each realtime setup, so reconnect storms could hammer the login
+  endpoint and hit its `429` rate limit. The JWT is now cached on the client
+  instance and reused across `realtime()` calls and reconnects until it nears
+  expiry. Expiry is read from the JWT `exp` claim by base64-decoding the payload
+  (no signature verification) and treating the token as expired ~60s early;
+  a fresh login happens only when no token is cached or the cached one is at/near
+  expiry. An explicitly configured access token continues to be used verbatim.
+- A `null` refresh token returned by the login endpoint is now handled safely
+  during the exchange (it is no longer forwarded to `setRefreshToken()`).
+
 ## [1.0.11] - 2026-07-08
 
 ### Fixed
