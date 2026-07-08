@@ -17,7 +17,7 @@ final readonly class ClientOptions
 
     public const DEFAULT_REQUEST_TIMEOUT = 30.0;
 
-    public const DEFAULT_USER_AGENT = 'spooled-php/1.0.0';
+    public const DEFAULT_USER_AGENT = 'spooled-php/1.0.12';
 
     public string $baseUrl;
 
