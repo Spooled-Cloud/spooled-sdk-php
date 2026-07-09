@@ -177,10 +177,10 @@ final class ClientOptionsTest extends TestCase
     public function it_trims_surrounding_whitespace_from_all_credentials(): void
     {
         $options = new ClientOptions(
-            apiKey: "  sp_test_key  ",
+            apiKey: '  sp_test_key  ',
             accessToken: "\tjwt.body.sig\n",
             refreshToken: "\rrefresh\r\n",
-            adminKey: " sk_admin_secret ",
+            adminKey: ' sk_admin_secret ',
         );
 
         $this->assertSame('sp_test_key', $options->apiKey);

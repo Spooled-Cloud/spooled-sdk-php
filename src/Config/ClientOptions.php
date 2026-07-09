@@ -93,6 +93,7 @@ final readonly class ClientOptions
             return null;
         }
         $trimmed = trim($value);
+
         return $trimmed === '' ? null : $trimmed;
     }
 

@@ -45,6 +45,7 @@ final readonly class GrpcOptions
             return null;
         }
         $trimmed = trim($value);
+
         return $trimmed === '' ? null : $trimmed;
     }
 
