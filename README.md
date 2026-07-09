@@ -674,16 +674,22 @@ All operations automatically enforce tier-based limits:
 | **Starter** | 100 | 100,000 | 25 | 25 | 10 |
 | **Enterprise** | Unlimited | Unlimited | Unlimited | Unlimited | Unlimited |
 
-When limits are exceeded, you'll receive a `SpooledError` with status code 403:
+When a plan quota or limit is exceeded, you'll receive an `HTTP 429` (a `RateLimitError`)
+with `errorCode` `"QUOTA_EXCEEDED"` and details describing the `resource`, `current`, `limit`, and `plan`:
 
 ```php
 <?php
 
+use Spooled\Errors\RateLimitError;
+
 try {
     $client->jobs->create([/* ... */]);
-} catch (SpooledError $e) {
-    if ($e->statusCode === 403) {
-        echo "Limit exceeded: {$e->getMessage()}\n";
+} catch (RateLimitError $e) {
+    if ($e->errorCode === 'QUOTA_EXCEEDED') {
+        echo "Plan quota exceeded: {$e->getMessage()}\n";
+    } else {
+        // Per-second rate limiting also returns 429
+        echo "Rate limited. Retry after: {$e->getRetryAfterSeconds()} seconds\n";
     }
 }
 ```
