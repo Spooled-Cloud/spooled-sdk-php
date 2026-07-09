@@ -19,6 +19,14 @@ final readonly class ClientOptions
 
     public const DEFAULT_USER_AGENT = 'spooled-php/1.0.12';
 
+    public ?string $apiKey;
+
+    public ?string $accessToken;
+
+    public ?string $refreshToken;
+
+    public ?string $adminKey;
+
     public string $baseUrl;
 
     public ?string $wsUrl;
@@ -39,10 +47,10 @@ final readonly class ClientOptions
     public array $headers;
 
     public function __construct(
-        public ?string $apiKey = null,
-        public ?string $accessToken = null,
-        public ?string $refreshToken = null,
-        public ?string $adminKey = null,
+        ?string $apiKey = null,
+        ?string $accessToken = null,
+        ?string $refreshToken = null,
+        ?string $adminKey = null,
         ?string $baseUrl = null,
         ?string $wsUrl = null,
         ?string $grpcAddress = null,
@@ -55,6 +63,15 @@ final readonly class ClientOptions
         array $headers = [],
         public ?LoggerInterface $logger = null,
     ) {
+        // Trim whitespace (including trailing '\n') from every credential so
+        // that keys read from files or environment variables never end up as
+        // `Authorization: Bearer <key>\n`. Guzzle (and PHP's stream wrapper)
+        // reject CR/LF in header values with an opaque error users routinely
+        // mis-diagnose as an auth failure.
+        $this->apiKey = self::trimCredential($apiKey);
+        $this->accessToken = self::trimCredential($accessToken);
+        $this->refreshToken = self::trimCredential($refreshToken);
+        $this->adminKey = self::trimCredential($adminKey);
         $this->baseUrl = $baseUrl ?? self::DEFAULT_BASE_URL;
         $this->wsUrl = $wsUrl ?? $this->deriveWsUrl($this->baseUrl);
         $this->grpcAddress = $grpcAddress;
@@ -64,6 +81,19 @@ final readonly class ClientOptions
         $this->circuitBreaker = $circuitBreaker ?? new CircuitBreakerConfig();
         $this->userAgent = $userAgent ?? self::DEFAULT_USER_AGENT;
         $this->headers = $headers;
+    }
+
+    /**
+     * Normalize a credential string by trimming surrounding whitespace and
+     * treating an all-whitespace input as unset.
+     */
+    private static function trimCredential(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $trimmed = trim($value);
+        return $trimmed === '' ? null : $trimmed;
     }
 
     /**

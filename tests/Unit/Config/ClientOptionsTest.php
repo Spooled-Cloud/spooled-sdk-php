@@ -161,4 +161,45 @@ final class ClientOptionsTest extends TestCase
         $this->assertInstanceOf(CircuitBreakerConfig::class, $options->circuitBreaker);
         $this->assertTrue($options->circuitBreaker->enabled);
     }
+
+    #[Test]
+    public function it_trims_trailing_newline_from_api_key(): void
+    {
+        // Regression: reading a key from a .env line leaves a '\n' behind,
+        // which Guzzle rejects as `invalid header value`.
+        $options = new ClientOptions(apiKey: "sp_test_abc123\n");
+
+        $this->assertSame('sp_test_abc123', $options->apiKey);
+        $this->assertSame('Bearer sp_test_abc123', $options->getAuthHeader()['value']);
+    }
+
+    #[Test]
+    public function it_trims_surrounding_whitespace_from_all_credentials(): void
+    {
+        $options = new ClientOptions(
+            apiKey: "  sp_test_key  ",
+            accessToken: "\tjwt.body.sig\n",
+            refreshToken: "\rrefresh\r\n",
+            adminKey: " sk_admin_secret ",
+        );
+
+        $this->assertSame('sp_test_key', $options->apiKey);
+        $this->assertSame('jwt.body.sig', $options->accessToken);
+        $this->assertSame('refresh', $options->refreshToken);
+        $this->assertSame('sk_admin_secret', $options->adminKey);
+    }
+
+    #[Test]
+    public function it_treats_whitespace_only_credentials_as_null(): void
+    {
+        $options = new ClientOptions(
+            apiKey: "   \n",
+            accessToken: "\t",
+        );
+
+        $this->assertNull($options->apiKey);
+        $this->assertNull($options->accessToken);
+        $this->assertFalse($options->hasApiKey());
+        $this->assertFalse($options->hasAccessToken());
+    }
 }

@@ -9,12 +9,19 @@ namespace Spooled\Grpc;
  */
 final readonly class GrpcOptions
 {
+    public ?string $apiKey;
+
     public function __construct(
         public string $address,
-        public ?string $apiKey = null,
+        ?string $apiKey = null,
         public bool $secure = true,
         public ?float $timeout = null,
     ) {
+        // gRPC metadata (like HTTP headers) rejects '\r' / '\n', so keys read
+        // from environment variables with a trailing newline blow up the
+        // transport with an opaque error. Trim once at construction so every
+        // call site sees a well-formed key.
+        $this->apiKey = self::trimCredential($apiKey);
     }
 
     /**
@@ -30,6 +37,15 @@ final readonly class GrpcOptions
             secure: (bool) ($data['secure'] ?? true),
             timeout: isset($data['timeout']) ? (float) $data['timeout'] : null,
         );
+    }
+
+    private static function trimCredential(?string $value): ?string
+    {
+        if ($value === null) {
+            return null;
+        }
+        $trimmed = trim($value);
+        return $trimmed === '' ? null : $trimmed;
     }
 
     /**

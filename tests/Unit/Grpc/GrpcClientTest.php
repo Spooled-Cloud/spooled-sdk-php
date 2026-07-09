@@ -70,4 +70,33 @@ final class GrpcClientTest extends TestCase
     {
         $this->assertTrue(extension_loaded('grpc'));
     }
+
+    public function testGrpcOptionsTrimsTrailingNewlineFromApiKey(): void
+    {
+        // gRPC metadata layer rejects CR/LF; a stray '\n' from a .env-loaded
+        // key must not survive construction.
+        $options = new GrpcOptions(
+            address: 'grpc.spooled.cloud:443',
+            apiKey: "sp_test_abc\n",
+        );
+
+        $this->assertSame('sp_test_abc', $options->apiKey);
+    }
+
+    public function testGrpcOptionsTrimsWhitespaceFromApiKey(): void
+    {
+        $options = new GrpcOptions(
+            address: 'grpc.spooled.cloud:443',
+            apiKey: "  \t sp_test_abc \r\n",
+        );
+
+        $this->assertSame('sp_test_abc', $options->apiKey);
+    }
+
+    public function testGrpcOptionsTreatsWhitespaceOnlyKeyAsNull(): void
+    {
+        $options = new GrpcOptions(address: 'localhost:50051', apiKey: "   \n");
+
+        $this->assertNull($options->apiKey);
+    }
 }
