@@ -64,9 +64,35 @@ final class SpooledErrorTest extends TestCase
             '500 -> ServerError' => [500, ServerError::class],
             '502 -> ServerError' => [502, ServerError::class],
             '503 -> ServerError' => [503, ServerError::class],
-            '400 -> SpooledError (generic)' => [400, SpooledError::class],
+            // The production backend returns 400 (not 422) for job/queue
+            // validation failures, so 400 maps to ValidationError.
+            '400 -> ValidationError' => [400, ValidationError::class],
             '418 -> SpooledError (generic)' => [418, SpooledError::class],
         ];
+    }
+
+    #[Test]
+    public function it_maps_http_400_validation_error_to_validation_error(): void
+    {
+        // Production backend returns 400 with {"code":"VALIDATION_ERROR"} for
+        // job/queue validation failures. A catch (ValidationError) must fire.
+        $body = json_encode([
+            'code' => 'VALIDATION_ERROR',
+            'message' => 'queue name is invalid',
+        ]);
+
+        $caught = null;
+
+        try {
+            throw SpooledError::fromResponse(400, $body);
+        } catch (ValidationError $e) {
+            $caught = $e;
+        }
+
+        $this->assertInstanceOf(ValidationError::class, $caught);
+        $this->assertSame(400, $caught->statusCode);
+        $this->assertSame('VALIDATION_ERROR', $caught->errorCode);
+        $this->assertSame('queue name is invalid', $caught->getMessage());
     }
 
     #[Test]

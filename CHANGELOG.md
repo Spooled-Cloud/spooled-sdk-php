@@ -5,6 +5,26 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.15] - 2026-07-09
+
+### Fixed
+
+- Realtime WebSocket typed handlers now fire. The backend emits events whose
+  `type` is the PascalCase enum variant (e.g. `JobCompleted`); the client now
+  maps these to the SDK's dotted event names (`job.completed`,
+  `job.status_changed`, `queue.stats`, `worker.heartbeat`, etc.) before
+  dispatching, so handlers registered via `on('job.completed', ...)` receive
+  events. The catch-all `on('message', ...)` handler still fires for every
+  message.
+- Realtime WebSocket `subscribe`/`unsubscribe` now send the backend's
+  `ClientCommand` shape `{cmd: 'subscribe', queue, job_id}` instead of the
+  previous `{action, topic}` form. Subscriptions no longer wait on a
+  subscribe acknowledgement (the server never sends one).
+- HTTP `400` responses now throw `ValidationError`, matching the production
+  backend which returns `400` (code `VALIDATION_ERROR`) for job/queue
+  validation failures, and matching the Go SDK. `422` continues to map to
+  `ValidationError`; both preserve the real HTTP status code.
+
 ## [1.0.14] - 2026-07-09
 
 ### Changed

@@ -7,7 +7,11 @@ namespace Spooled\Errors;
 use Throwable;
 
 /**
- * Error thrown when validation fails (422).
+ * Error thrown when validation fails.
+ *
+ * The production backend returns HTTP 400 (code VALIDATION_ERROR) for job and
+ * queue validation failures, while other endpoints may return 422. Both map to
+ * this error type, so the real HTTP status is preserved via $statusCode.
  */
 final class ValidationError extends SpooledError
 {
@@ -21,8 +25,9 @@ final class ValidationError extends SpooledError
         ?string $requestId = null,
         ?string $rawBody = null,
         ?Throwable $previous = null,
+        int $statusCode = 422,
     ) {
-        parent::__construct($message, 422, $errorCode, $details, $requestId, $rawBody, $previous);
+        parent::__construct($message, $statusCode, $errorCode, $details, $requestId, $rawBody, $previous);
     }
 
     /**

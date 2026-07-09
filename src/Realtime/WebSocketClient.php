@@ -18,6 +18,28 @@ use Throwable;
  */
 final class WebSocketClient
 {
+    /**
+     * Maps the backend's PascalCase event `type` (the RealtimeEvent enum
+     * variant name serialized by the server) to the SDK's dotted event names
+     * used when registering typed handlers via on(). See the backend
+     * RealtimeEvent enum in src/api/handlers/realtime.rs for the full set.
+     *
+     * @var array<string, string>
+     */
+    private const EVENT_TYPE_MAP = [
+        'JobStatusChange' => 'job.status_changed',
+        'JobCreated' => 'job.created',
+        'JobCompleted' => 'job.completed',
+        'JobFailed' => 'job.failed',
+        'QueueStats' => 'queue.stats',
+        'WorkerHeartbeat' => 'worker.heartbeat',
+        'WorkerRegistered' => 'worker.registered',
+        'WorkerDeregistered' => 'worker.deregistered',
+        'SystemHealth' => 'system.health',
+        'Ping' => 'ping',
+        'Error' => 'error',
+    ];
+
     private readonly LoggerInterface $logger;
 
     private readonly string $wsUrl;
@@ -39,7 +61,7 @@ final class WebSocketClient
     /** @var array<string, callable> */
     private array $eventHandlers = [];
 
-    /** @var array<string> */
+    /** @var list<array{queue: ?string, jobId: ?string}> */
     private array $subscriptions = [];
 
     public function __construct(
@@ -63,31 +85,35 @@ final class WebSocketClient
     }
 
     /**
-     * Subscribe to a topic.
+     * Subscribe to updates for a queue and/or a specific job.
+     *
+     * Sends the backend's subscribe command ({cmd: 'subscribe', queue, job_id}).
+     * The server does not send a subscribe acknowledgement, so this does not
+     * block waiting for one.
      */
-    public function subscribe(string $topic): self
+    public function subscribe(?string $queue = null, ?string $jobId = null): self
     {
-        $this->subscriptions[] = $topic;
+        $this->subscriptions[] = ['queue' => $queue, 'jobId' => $jobId];
 
         if ($this->connection !== null) {
-            $this->sendSubscribe($topic);
+            $this->sendSubscribe($queue, $jobId);
         }
 
         return $this;
     }
 
     /**
-     * Unsubscribe from a topic.
+     * Unsubscribe from updates for a queue and/or a specific job.
      */
-    public function unsubscribe(string $topic): self
+    public function unsubscribe(?string $queue = null, ?string $jobId = null): self
     {
-        $this->subscriptions = array_filter(
+        $this->subscriptions = array_values(array_filter(
             $this->subscriptions,
-            fn (string $t) => $t !== $topic,
-        );
+            fn (array $sub): bool => !($sub['queue'] === $queue && $sub['jobId'] === $jobId),
+        ));
 
         if ($this->connection !== null) {
-            $this->sendUnsubscribe($topic);
+            $this->sendUnsubscribe($queue, $jobId);
         }
 
         return $this;
@@ -98,7 +124,7 @@ final class WebSocketClient
      */
     public function subscribeToJob(string $jobId): self
     {
-        return $this->subscribe("job:{$jobId}");
+        return $this->subscribe(jobId: $jobId);
     }
 
     /**
@@ -106,7 +132,7 @@ final class WebSocketClient
      */
     public function subscribeToQueue(string $queueName): self
     {
-        return $this->subscribe("queue:{$queueName}");
+        return $this->subscribe(queue: $queueName);
     }
 
     /**
@@ -175,9 +201,9 @@ final class WebSocketClient
                 $this->reconnectAttempts = 0;
                 $this->emit('connected', []);
 
-                // Subscribe to pending topics
-                foreach ($this->subscriptions as $topic) {
-                    $this->sendSubscribe($topic);
+                // Replay pending subscriptions on (re)connect.
+                foreach ($this->subscriptions as $sub) {
+                    $this->sendSubscribe($sub['queue'], $sub['jobId']);
                 }
 
                 $conn->on('message', function (\Ratchet\RFC6455\Messaging\MessageInterface $msg): void {
@@ -244,8 +270,13 @@ final class WebSocketClient
             return;
         }
 
-        $type = $data['type'] ?? 'message';
-        $this->logger->debug('WebSocket message received', ['type' => $type]);
+        // The backend serializes each event with its PascalCase enum variant
+        // as `type` (e.g. "JobCompleted"). Map it to the SDK's dotted event
+        // name (e.g. "job.completed") so typed handlers registered via on()
+        // actually fire. Unknown types pass through unchanged.
+        $rawType = $data['type'] ?? 'message';
+        $type = self::EVENT_TYPE_MAP[$rawType] ?? $rawType;
+        $this->logger->debug('WebSocket message received', ['type' => $type, 'rawType' => $rawType]);
 
         // Dispatch to type-specific handlers
         if (isset($this->eventHandlers[$type])) {
@@ -267,24 +298,26 @@ final class WebSocketClient
     }
 
     /**
-     * Send subscribe message.
+     * Send subscribe command in the backend's ClientCommand shape.
      */
-    private function sendSubscribe(string $topic): void
+    private function sendSubscribe(?string $queue, ?string $jobId): void
     {
         $this->send([
-            'action' => 'subscribe',
-            'topic' => $topic,
+            'cmd' => 'subscribe',
+            'queue' => $queue,
+            'job_id' => $jobId,
         ]);
     }
 
     /**
-     * Send unsubscribe message.
+     * Send unsubscribe command in the backend's ClientCommand shape.
      */
-    private function sendUnsubscribe(string $topic): void
+    private function sendUnsubscribe(?string $queue, ?string $jobId): void
     {
         $this->send([
-            'action' => 'unsubscribe',
-            'topic' => $topic,
+            'cmd' => 'unsubscribe',
+            'queue' => $queue,
+            'job_id' => $jobId,
         ]);
     }
 

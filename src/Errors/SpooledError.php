@@ -71,7 +71,11 @@ class SpooledError extends Exception
             404 => new NotFoundError($message, $code, $details, $requestId, $body),
             409 => new ConflictError($message, $code, $details, $requestId, $body),
             413 => new PayloadTooLargeError($message, $code, $details, $requestId, $body),
-            422 => new ValidationError($message, $code, $details, $requestId, $body),
+            // The production backend returns 400 (not 422) for job/queue
+            // validation failures ({"code":"VALIDATION_ERROR"}); both statuses
+            // map to ValidationError, matching the Go SDK. The real status is
+            // preserved so callers can still inspect statusCode.
+            400, 422 => new ValidationError($message, $code, $details, $requestId, $body, statusCode: $statusCode),
             429 => self::createRateLimitError($message, $code, $details, $requestId, $body, $headers),
             default => $statusCode >= 500
                 ? new ServerError($message, $statusCode, $code, $details, $requestId, $body)
