@@ -309,6 +309,8 @@ final class GrpcQueueResource
                     'status' => $job->getStatus(),
                     'retryCount' => $job->getRetryCount(),
                     'maxRetries' => $job->getMaxRetries(),
+                    // Lease fencing token; echo back on complete/fail/renewLease
+                    'leaseId' => $job->getLeaseId() !== '' ? $job->getLeaseId() : null,
                 ];
             }
         }
@@ -359,6 +361,8 @@ final class GrpcQueueResource
                 'status' => $job->getStatus(),
                 'retryCount' => $job->getRetryCount(),
                 'maxRetries' => $job->getMaxRetries(),
+                // Lease fencing token; echo back on complete/fail/renewLease
+                'leaseId' => $job->getLeaseId() !== '' ? $job->getLeaseId() : null,
             ],
         ];
     }
@@ -385,6 +389,12 @@ final class GrpcQueueResource
             $struct = new \Google\Protobuf\Struct();
             $struct->mergeFromJsonString(json_encode($params['result']));
             $request->setResult($struct);
+        }
+
+        // Lease fencing token from dequeue; when set, completion succeeds only
+        // if it matches the job's current lease.
+        if (isset($params['leaseId'])) {
+            $request->setLeaseId((string) $params['leaseId']);
         }
 
         [$response, $status] = $client->Complete($request, $metadata)->wait();
@@ -419,6 +429,12 @@ final class GrpcQueueResource
 
         if (isset($params['retry'])) {
             $request->setRetry((bool) $params['retry']);
+        }
+
+        // Lease fencing token from dequeue; when set, the failure succeeds only
+        // if it matches the job's current lease.
+        if (isset($params['leaseId'])) {
+            $request->setLeaseId((string) $params['leaseId']);
         }
 
         [$response, $status] = $client->Fail($request, $metadata)->wait();
@@ -477,6 +493,12 @@ final class GrpcQueueResource
         $request = new \Spooled\V1\RenewLeaseRequest();
         $request->setJobId($params['jobId']);
         $request->setWorkerId($params['workerId']);
+
+        // Lease fencing token from dequeue; when set, the renewal succeeds only
+        // if it matches the job's current lease.
+        if (isset($params['leaseId'])) {
+            $request->setLeaseId((string) $params['leaseId']);
+        }
 
         [$response, $status] = $client->RenewLease($request, $metadata)->wait();
 

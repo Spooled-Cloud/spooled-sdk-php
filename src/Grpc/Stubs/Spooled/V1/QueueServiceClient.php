@@ -23,7 +23,7 @@ class QueueServiceClient extends \Grpc\BaseStub {
      * @param \Spooled\V1\EnqueueRequest $argument input argument
      * @param array $metadata metadata
      * @param array $options call options
-     * @return \Grpc\UnaryCall<\Spooled\V1\EnqueueResponse>
+     * @return \Grpc\UnaryCall
      */
     public function Enqueue(\Spooled\V1\EnqueueRequest $argument,
       $metadata = [], $options = []) {
@@ -38,7 +38,7 @@ class QueueServiceClient extends \Grpc\BaseStub {
      * @param \Spooled\V1\DequeueRequest $argument input argument
      * @param array $metadata metadata
      * @param array $options call options
-     * @return \Grpc\UnaryCall<\Spooled\V1\DequeueResponse>
+     * @return \Grpc\UnaryCall
      */
     public function Dequeue(\Spooled\V1\DequeueRequest $argument,
       $metadata = [], $options = []) {
@@ -53,7 +53,7 @@ class QueueServiceClient extends \Grpc\BaseStub {
      * @param \Spooled\V1\CompleteRequest $argument input argument
      * @param array $metadata metadata
      * @param array $options call options
-     * @return \Grpc\UnaryCall<\Spooled\V1\CompleteResponse>
+     * @return \Grpc\UnaryCall
      */
     public function Complete(\Spooled\V1\CompleteRequest $argument,
       $metadata = [], $options = []) {
@@ -68,7 +68,7 @@ class QueueServiceClient extends \Grpc\BaseStub {
      * @param \Spooled\V1\FailRequest $argument input argument
      * @param array $metadata metadata
      * @param array $options call options
-     * @return \Grpc\UnaryCall<\Spooled\V1\FailResponse>
+     * @return \Grpc\UnaryCall
      */
     public function Fail(\Spooled\V1\FailRequest $argument,
       $metadata = [], $options = []) {
@@ -83,7 +83,7 @@ class QueueServiceClient extends \Grpc\BaseStub {
      * @param \Spooled\V1\RenewLeaseRequest $argument input argument
      * @param array $metadata metadata
      * @param array $options call options
-     * @return \Grpc\UnaryCall<\Spooled\V1\RenewLeaseResponse>
+     * @return \Grpc\UnaryCall
      */
     public function RenewLease(\Spooled\V1\RenewLeaseRequest $argument,
       $metadata = [], $options = []) {
@@ -98,7 +98,7 @@ class QueueServiceClient extends \Grpc\BaseStub {
      * @param \Spooled\V1\GetJobRequest $argument input argument
      * @param array $metadata metadata
      * @param array $options call options
-     * @return \Grpc\UnaryCall<\Spooled\V1\GetJobResponse>
+     * @return \Grpc\UnaryCall
      */
     public function GetJob(\Spooled\V1\GetJobRequest $argument,
       $metadata = [], $options = []) {
@@ -113,7 +113,7 @@ class QueueServiceClient extends \Grpc\BaseStub {
      * @param \Spooled\V1\GetQueueStatsRequest $argument input argument
      * @param array $metadata metadata
      * @param array $options call options
-     * @return \Grpc\UnaryCall<\Spooled\V1\GetQueueStatsResponse>
+     * @return \Grpc\UnaryCall
      */
     public function GetQueueStats(\Spooled\V1\GetQueueStatsRequest $argument,
       $metadata = [], $options = []) {

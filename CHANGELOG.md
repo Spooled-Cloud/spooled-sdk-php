@@ -5,6 +5,28 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.16] - 2026-07-11
+
+### Added
+
+- Lease fencing (backend v0.1.94, audit F9). `ClaimedJob` and `Job` now carry
+  the `lease_id` fencing token returned by claim/dequeue (exposed as
+  `$leaseId`), and the worker echoes it back on complete/fail so an operation
+  from a stale lease is rejected with `409 LEASE_EXPIRED` instead of clobbering
+  another worker's job. Manual worker loops can opt in by passing `leaseId` in
+  the params of `$client->jobs->complete()/fail()/heartbeat()`; omitting it
+  keeps the legacy worker-id-only behaviour.
+- gRPC client: `complete`, `fail`, and `renewLease` accept an optional
+  `leaseId` param and set it on the request; `dequeue` and `getJob` surface
+  the job's `leaseId`. Stubs regenerated from the shared proto
+  (`Job.lease_id`, `CompleteRequest.lease_id`, `FailRequest.lease_id`,
+  `RenewLeaseRequest.lease_id`).
+
+### Fixed
+
+- Default `User-Agent` now reports the current SDK version (it was stuck at
+  `spooled-php/1.0.12`).
+
 ## [1.0.15] - 2026-07-09
 
 ### Fixed

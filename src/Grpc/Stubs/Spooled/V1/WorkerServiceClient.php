@@ -22,7 +22,7 @@ class WorkerServiceClient extends \Grpc\BaseStub {
      * @param \Spooled\V1\RegisterWorkerRequest $argument input argument
      * @param array $metadata metadata
      * @param array $options call options
-     * @return \Grpc\UnaryCall<\Spooled\V1\RegisterWorkerResponse>
+     * @return \Grpc\UnaryCall
      */
     public function Register(\Spooled\V1\RegisterWorkerRequest $argument,
       $metadata = [], $options = []) {
@@ -37,7 +37,7 @@ class WorkerServiceClient extends \Grpc\BaseStub {
      * @param \Spooled\V1\HeartbeatRequest $argument input argument
      * @param array $metadata metadata
      * @param array $options call options
-     * @return \Grpc\UnaryCall<\Spooled\V1\HeartbeatResponse>
+     * @return \Grpc\UnaryCall
      */
     public function Heartbeat(\Spooled\V1\HeartbeatRequest $argument,
       $metadata = [], $options = []) {
@@ -52,7 +52,7 @@ class WorkerServiceClient extends \Grpc\BaseStub {
      * @param \Spooled\V1\DeregisterRequest $argument input argument
      * @param array $metadata metadata
      * @param array $options call options
-     * @return \Grpc\UnaryCall<\Spooled\V1\DeregisterResponse>
+     * @return \Grpc\UnaryCall
      */
     public function Deregister(\Spooled\V1\DeregisterRequest $argument,
       $metadata = [], $options = []) {

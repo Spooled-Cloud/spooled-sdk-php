@@ -397,10 +397,18 @@ class SpooledWorker
         try {
             $resultArray = is_array($result) ? $result : ($result !== null ? ['result' => $result] : null);
 
-            $this->client->jobs->complete($job->id, [
+            $params = [
                 'workerId' => $this->workerId,
                 'result' => $resultArray,
-            ]);
+            ];
+
+            // Echo the lease fencing token from claim so completion applies
+            // only to the lease this worker actually holds.
+            if ($job->leaseId !== null) {
+                $params['leaseId'] = $job->leaseId;
+            }
+
+            $this->client->jobs->complete($job->id, $params);
 
             $this->completedJobs++;
             $this->emit(WorkerEvent::JOB_COMPLETED->value, [
@@ -428,10 +436,18 @@ class SpooledWorker
         $willRetry = $job->retryCount < $job->maxRetries;
 
         try {
-            $this->client->jobs->fail($job->id, [
+            $params = [
                 'workerId' => $this->workerId,
                 'error' => $error,
-            ]);
+            ];
+
+            // Echo the lease fencing token from claim so the failure applies
+            // only to the lease this worker actually holds.
+            if ($job->leaseId !== null) {
+                $params['leaseId'] = $job->leaseId;
+            }
+
+            $this->client->jobs->fail($job->id, $params);
 
             $this->failedJobs++;
             $this->emit(WorkerEvent::JOB_FAILED->value, [

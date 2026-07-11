@@ -234,7 +234,7 @@ final class JobsResource extends BaseResource
     /**
      * Complete a job (worker ack).
      *
-     * @param array<string, mixed> $params {workerId, result?}
+     * @param array<string, mixed> $params {workerId, result?, leaseId?}
      * @return array{success: bool}
      */
     public function complete(string $jobId, array $params): array
@@ -245,7 +245,7 @@ final class JobsResource extends BaseResource
     /**
      * Fail a job (worker nack).
      *
-     * @param array<string, mixed> $params {workerId, error}
+     * @param array<string, mixed> $params {workerId, error, leaseId?}
      * @return array{success: bool, error?: string}
      */
     public function fail(string $jobId, array $params): array
@@ -256,7 +256,7 @@ final class JobsResource extends BaseResource
     /**
      * Extend job lease (heartbeat).
      *
-     * @param array<string, mixed> $params {workerId, leaseDurationSecs}
+     * @param array<string, mixed> $params {workerId, leaseDurationSecs, leaseId?}
      * @return array{success: bool}
      */
     public function heartbeat(string $jobId, array $params): array

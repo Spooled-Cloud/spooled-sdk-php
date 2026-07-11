@@ -53,6 +53,8 @@ final readonly class Job
         public ?string $claimedAt,
         public ?string $leaseExpiresAt,
         public ?string $expiresAt,
+        /** Fencing token for the current lease; echo on complete/fail/heartbeat */
+        public ?string $leaseId = null,
     ) {
     }
 
@@ -91,6 +93,8 @@ final readonly class Job
             claimedAt: isset($data['claimedAt']) ? (string) $data['claimedAt'] : null,
             leaseExpiresAt: isset($data['leaseExpiresAt']) ? (string) $data['leaseExpiresAt'] : null,
             expiresAt: isset($data['expiresAt']) ? (string) $data['expiresAt'] : null,
+            leaseId: isset($data['leaseId']) ? (string) $data['leaseId']
+                : (isset($data['lease_id']) ? (string) $data['lease_id'] : null),
         );
     }
 
@@ -127,6 +131,7 @@ final readonly class Job
             'completedAt' => $this->completedAt,
             'claimedAt' => $this->claimedAt,
             'leaseExpiresAt' => $this->leaseExpiresAt,
+            'leaseId' => $this->leaseId,
         ], fn ($v) => $v !== null);
     }
 }
@@ -272,6 +277,12 @@ final readonly class ClaimedJob
         public int $maxRetries,
         public int $timeoutSeconds,
         public ?string $leaseExpiresAt = null,
+        /**
+         * Fencing token for the current lease. Returned by claim/dequeue;
+         * echo it back on complete/fail/heartbeat so the operation applies
+         * only to the lease this worker actually holds (null = legacy).
+         */
+        public ?string $leaseId = null,
     ) {
     }
 
@@ -288,6 +299,8 @@ final readonly class ClaimedJob
             maxRetries: (int) ($data['maxRetries'] ?? $data['max_retries'] ?? 3),
             timeoutSeconds: (int) ($data['timeoutSeconds'] ?? $data['timeout_seconds'] ?? 300),
             leaseExpiresAt: isset($data['leaseExpiresAt']) ? (string) $data['leaseExpiresAt'] : null,
+            leaseId: isset($data['leaseId']) ? (string) $data['leaseId']
+                : (isset($data['lease_id']) ? (string) $data['lease_id'] : null),
         );
     }
 }

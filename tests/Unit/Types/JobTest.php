@@ -7,6 +7,7 @@ namespace Spooled\Tests\Unit\Types;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Spooled\Types\ClaimedJob;
 use Spooled\Types\CreateJobParams;
 use Spooled\Types\Job;
 use Spooled\Types\JobList;
@@ -16,6 +17,7 @@ use Spooled\Types\JobStats;
 #[CoversClass(JobList::class)]
 #[CoversClass(JobStats::class)]
 #[CoversClass(CreateJobParams::class)]
+#[CoversClass(ClaimedJob::class)]
 final class JobTest extends TestCase
 {
     #[Test]
@@ -191,5 +193,69 @@ final class JobTest extends TestCase
         $this->assertArrayNotHasKey('scheduledFor', $array);
         $this->assertArrayNotHasKey('tags', $array);
         $this->assertArrayNotHasKey('metadata', $array);
+    }
+
+    #[Test]
+    public function it_parses_lease_id_on_job(): void
+    {
+        $camel = Job::fromArray([
+            'id' => 'job-123',
+            'queueName' => 'test-queue',
+            'status' => 'claimed',
+            'payload' => [],
+            'leaseId' => 'lease-abc',
+        ]);
+        $snake = Job::fromArray([
+            'id' => 'job-123',
+            'queueName' => 'test-queue',
+            'status' => 'claimed',
+            'payload' => [],
+            'lease_id' => 'lease-def',
+        ]);
+        $absent = Job::fromArray([
+            'id' => 'job-123',
+            'queueName' => 'test-queue',
+            'status' => 'pending',
+            'payload' => [],
+        ]);
+
+        $this->assertSame('lease-abc', $camel->leaseId);
+        $this->assertSame('lease-def', $snake->leaseId);
+        $this->assertNull($absent->leaseId);
+        $this->assertSame('lease-abc', $camel->toArray()['leaseId']);
+        $this->assertArrayNotHasKey('leaseId', $absent->toArray());
+    }
+
+    #[Test]
+    public function it_parses_lease_id_on_claimed_job(): void
+    {
+        $camel = ClaimedJob::fromArray([
+            'id' => 'job-1',
+            'queueName' => 'test-queue',
+            'payload' => ['key' => 'value'],
+            'leaseId' => 'lease-abc',
+        ]);
+        $snake = ClaimedJob::fromArray([
+            'id' => 'job-2',
+            'queueName' => 'test-queue',
+            'payload' => [],
+            'lease_id' => 'lease-def',
+        ]);
+
+        $this->assertSame('lease-abc', $camel->leaseId);
+        $this->assertSame('lease-def', $snake->leaseId);
+    }
+
+    #[Test]
+    public function it_defaults_claimed_job_lease_id_to_null(): void
+    {
+        // Legacy backend responses without a fencing token must keep working.
+        $job = ClaimedJob::fromArray([
+            'id' => 'job-1',
+            'queueName' => 'test-queue',
+            'payload' => [],
+        ]);
+
+        $this->assertNull($job->leaseId);
     }
 }
