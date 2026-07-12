@@ -1,502 +1,200 @@
 # Workers Guide
 
-This guide covers the `SpooledWorker` runtime for processing jobs from queues.
-The runtime requires PHP's `pcntl` and `posix` extensions (normally available in
-Unix-like CLI builds) to renew leases while synchronous handlers are running.
-It does not require an event loop.
+This guide documents `SpooledWorker` in Spooled PHP SDK 1.0.17.
+
+## Runtime Requirements
+
+`SpooledWorker::start()` requires `ext-pcntl` and `ext-posix` in a Unix-like CLI environment. The worker uses a short-lived forked child process to renew each claimed job's lease while the parent runs a blocking synchronous handler. REST, gRPC, realtime, and other resource clients do not require these extensions.
+
+No event loop is required. If `pcntl_fork`, signal-mask functions, or `posix_kill` are unavailable, `start()` throws before registering the worker.
 
 ## Basic Worker
 
 ```php
-use Spooled\SpooledClient;
+<?php
+
 use Spooled\Config\ClientOptions;
+use Spooled\SpooledClient;
+use Spooled\Worker\JobContext;
 use Spooled\Worker\SpooledWorker;
-use Spooled\Worker\WorkerOptions;
+use Spooled\Worker\WorkerConfig;
 
-$client = new SpooledClient(
-    ClientOptions::fromArray(['apiKey' => 'sk_live_...'])
-);
+$client = new SpooledClient(new ClientOptions(apiKey: 'sp_live_...'));
+$worker = new SpooledWorker($client, new WorkerConfig(
+    queueName: 'emails',
+    leaseDuration: 60,
+    heartbeatFraction: 0.5,
+));
 
-$worker = new SpooledWorker(
-    $client,
-    WorkerOptions::fromArray([
-        'queueName' => 'emails',
-        'concurrency' => 10,
-    ])
-);
+$worker->process(function (JobContext $ctx): array {
+    sendEmail($ctx->payload);
 
-$worker->process(function (array $ctx) {
-    echo "Processing job {$ctx['jobId']}\n";
-    sendEmail($ctx['payload']);
     return ['sent' => true];
 });
 
-$worker->start();
+pcntl_async_signals(true);
+pcntl_signal(SIGTERM, fn () => $worker->stop());
+pcntl_signal(SIGINT, fn () => $worker->stop());
+
+$worker->start(); // Blocking until stop() or an unrecoverable error.
 ```
 
-## Configuration Options
+## Worker Configuration
 
 ```php
-$worker = new SpooledWorker($client, WorkerOptions::fromArray([
-    // Required
-    'queueName' => 'my-queue',
-
-    // Concurrency
-    'concurrency' => 10,           // Max parallel jobs (default: 5)
-
-    // Polling
-    'pollInterval' => 1000,        // Poll every N ms (default: 1000)
-
-    // Lease Management
-    'leaseDuration' => 30,         // Lease duration in seconds (default: 30)
-    'heartbeatFraction' => 0.5,    // Renew after this fraction of the lease (0 < value < 1)
-    'heartbeatInterval' => 15000,  // Worker heartbeat interval in ms (default: 15000)
-
-    // Lifecycle
-    'shutdownTimeout' => 30000,    // Max wait for graceful shutdown (default: 30000)
-
-    // Identification
-    'hostname' => gethostname(),   // Worker hostname
-    'workerType' => 'php',         // Worker type identifier
-    'version' => '1.0.0',          // Application version
-    'metadata' => [                // Custom metadata
-        'env' => 'production',
-        'region' => 'us-east-1',
-    ],
-]));
+$config = new WorkerConfig(
+    queueName: 'emails',
+    concurrency: 5,
+    pollInterval: 1000,       // milliseconds
+    leaseDuration: 60,        // seconds
+    heartbeatFraction: 0.5,   // renew after 50% of the lease; must be > 0 and < 1
+    shutdownTimeout: 30000,   // milliseconds
+    heartbeatInterval: 15000, // worker-registration heartbeat, milliseconds
+    hostname: gethostname() ?: 'php-worker',
+    workerType: 'php',
+    // version defaults to Spooled\Version::VERSION (1.0.17)
+    metadata: ['environment' => 'production'],
+);
 ```
+
+`WorkerConfig::fromArray()` is also supported for dynamic configuration. `queueName`/`queue` are accepted aliases.
+
+The current runtime executes its synchronous handler in the polling process, so claimed jobs are handled serially. `concurrency` controls advertised/claim capacity but does not create parallel handler execution. Run multiple worker processes for parallelism.
+
+## Lease Renewal and Fencing
+
+For every claimed job, the worker:
+
+1. Starts an isolated renewal child before invoking the handler.
+2. Renews after `leaseDuration * heartbeatFraction` using a fresh post-fork HTTP transport with retries disabled and a timeout bounded by the remaining lease.
+3. Includes the immutable `leaseId` from the claim on heartbeat, completion, and failure requests when the server supplied one.
+4. Stops and reaps the renewal child before settling the job, preventing renewal from racing completion/failure or touching a replacement lease.
+5. Cancels the active execution and emits `error` if the lease is terminally lost.
+
+A stale fencing token is rejected by the server (`409 LEASE_EXPIRED`), so a worker must not cache or substitute lease IDs.
 
 ## Job Context
 
-The `process` handler receives a context array:
+Handlers receive `JobContext`:
 
 ```php
-$worker->process(function (array $ctx) {
-    // Available context keys
-    $ctx['jobId'];       // Unique job ID (string)
-    $ctx['queueName'];   // Queue name (string)
-    $ctx['payload'];     // Job payload (array - your data)
-    $ctx['retryCount'];  // Current retry attempt (int, 0-indexed)
-    $ctx['maxRetries'];  // Max retries configured (int)
-    $ctx['workerId'];    // Worker ID (string)
-    
-    // Functions
-    $ctx['progress'](50, 'Halfway done');  // Report progress
-    
-    return ['result' => 'data'];
+$worker->process(function (JobContext $ctx): array {
+    $ctx->jobId;
+    $ctx->queueName;
+    $ctx->payload;
+    $ctx->retryCount;
+    $ctx->maxRetries;
+    $ctx->metadata;
+
+    $value = $ctx->get('key', 'default');
+    $isRetry = $ctx->isRetry();
+    $remaining = $ctx->getRemainingRetries();
+    $cancelled = $ctx->isCancelled();
+
+    return ['value' => $value];
 });
 ```
 
-### Example Handler
+`progress()` and `log()` are currently placeholders; they do not send progress or logs to the API.
+
+## Events
+
+`on()` returns an unsubscribe callable. Event handlers receive arrays with these fields:
+
+| Event | Payload |
+|---|---|
+| `started` | `workerId`, `queueName` |
+| `stopped` | `workerId`, `reason`, `completedJobs`, `failedJobs` |
+| `error` | `error`; job settlement/renewal errors also include `jobId`, `queueName`, and `operation` |
+| `job:claimed` | `jobId`, `queueName` |
+| `job:started` | `jobId`, `queueName` |
+| `job:completed` | `jobId`, `queueName`, `result` |
+| `job:failed` | `jobId`, `queueName`, `error`, `willRetry` |
+
+Success counters and `job:completed`/`job:failed` events advance only after the API confirms settlement. A rejected complete/fail request emits `error` instead of a false success event.
 
 ```php
-$worker->process(function (array $ctx) {
-    echo "Starting job {$ctx['jobId']}\n";
-
-    // Check retry count
-    if ($ctx['retryCount'] > 0) {
-        echo "Retry attempt {$ctx['retryCount']}/{$ctx['maxRetries']}\n";
-    }
-
-    // Process with progress reporting
-    $items = $ctx['payload']['items'] ?? [];
-    $total = count($items);
-    
-    foreach ($items as $i => $item) {
-        processItem($item);
-        $ctx['progress'](($i + 1) / $total * 100, "Processed item " . ($i + 1));
-    }
-
-    return ['processedItems' => $total];
-});
-```
-
-## Event Handlers
-
-Workers emit events throughout their lifecycle:
-
-```php
-// Worker lifecycle
-$worker->on('started', function (array $event) {
-    echo "Worker {$event['workerId']} started on {$event['queueName']}\n";
+$unsubscribe = $worker->on('job:completed', function (array $event): void {
+    echo "Completed {$event['jobId']}\n";
 });
 
-$worker->on('stopped', function (array $event) {
-    echo "Worker stopped: {$event['reason']}\n";
+$worker->on('error', function (array $event): void {
+    error_log($event['error']->getMessage());
 });
 
-$worker->on('error', function (array $event) {
-    echo "Worker error: {$event['error']->getMessage()}\n";
-});
-
-// Job lifecycle
-$worker->on('job:claimed', function (array $event) {
-    echo "Claimed job {$event['jobId']}\n";
-});
-
-$worker->on('job:started', function (array $event) {
-    echo "Started processing {$event['jobId']}\n";
-});
-
-$worker->on('job:completed', function (array $event) {
-    echo "Completed {$event['jobId']}: " . json_encode($event['result']) . "\n";
-});
-
-$worker->on('job:failed', function (array $event) {
-    echo "Failed {$event['jobId']}: {$event['error']}\n";
-    if ($event['willRetry']) {
-        echo "Will retry\n";
-    }
-});
+// Later, if needed:
+$unsubscribe();
 ```
 
 ## Graceful Shutdown
 
-Proper shutdown ensures in-progress jobs complete:
+`start()` owns the polling loop and blocks. Signal handlers should call `stop()` directly; do not wrap `start()` in a second `isRunning()` loop (there is no `isRunning()` method).
 
-```php
-$worker = new SpooledWorker($client, WorkerOptions::fromArray([
-    'queueName' => 'emails',
-    'shutdownTimeout' => 30000, // Wait up to 30 seconds
-]));
+On stop, the worker stops polling, marks active work cancelled, waits up to `shutdownTimeout`, deregisters, and emits `stopped`. Handlers should check `JobContext::isCancelled()` at safe interruption points.
 
-// Handle shutdown signals
-pcntl_signal(SIGTERM, function () use ($worker) {
-    echo "Received SIGTERM, shutting down...\n";
-    $worker->stop();
-});
+## Parallelism and Deployment
 
-pcntl_signal(SIGINT, function () use ($worker) {
-    echo "Received SIGINT, shutting down...\n";
-    $worker->stop();
-});
+For parallel synchronous processing, supervise multiple PHP CLI worker processes (Supervisor, systemd, Kubernetes replicas, or equivalent). Each process has its own worker registration and lease-renewal children. Set `WorkerConfig::concurrency` to the capacity advertised and claimed by each process; the current PHP runtime still executes handlers serially, so process count is what provides actual parallelism.
 
-// Start worker with signal handling
-$worker->process(function (array $ctx) {
-    // Your job processing logic
-    return ['done' => true];
-});
+### Docker
 
-// This will block until stopped
-while ($worker->isRunning()) {
-    pcntl_signal_dispatch();
-    usleep(100000); // 100ms
-}
-
-echo "Worker stopped gracefully\n";
-```
-
-### Shutdown Behavior
-
-1. Worker stops polling for new jobs
-2. Worker heartbeat stops
-3. In-progress jobs continue to completion
-4. Wait for jobs to complete (up to `shutdownTimeout`)
-5. Force-fail any remaining jobs after timeout
-6. Deregister worker from API
-
-## Error Handling
-
-### Throwing Errors
-
-Throwing an error marks the job as failed:
-
-```php
-$worker->process(function (array $ctx) {
-    $user = findUser($ctx['payload']['userId']);
-
-    if (!$user) {
-        throw new Exception("User not found: {$ctx['payload']['userId']}");
-    }
-
-    sendEmail($user['email'], $ctx['payload']['template']);
-    return ['sent' => true];
-});
-```
-
-### Retry vs No-Retry Errors
-
-By default, failed jobs are retried up to `maxRetries`. To prevent retries, throw a `NonRetryableError`:
-
-```php
-use Spooled\Errors\NonRetryableError;
-
-$worker->process(function (array $ctx) {
-    if (!isValidPayload($ctx['payload'])) {
-        // This job won't be retried - goes straight to DLQ
-        throw new NonRetryableError('Invalid payload format');
-    }
-    
-    // This might be retried on failure
-    return processJob($ctx['payload']);
-});
-```
-
-## Worker State
-
-Check worker status programmatically:
-
-```php
-echo "State: " . $worker->getState() . "\n";
-// 'idle' | 'starting' | 'running' | 'stopping' | 'stopped' | 'error'
-
-echo "Worker ID: " . ($worker->getWorkerId() ?? 'not started') . "\n";
-
-echo "Active jobs: " . $worker->getActiveJobCount() . "\n";
-
-echo "Is running: " . ($worker->isRunning() ? 'yes' : 'no') . "\n";
-```
-
-## Multiple Workers
-
-Run multiple workers for different queues:
-
-```php
-$emailWorker = new SpooledWorker($client, WorkerOptions::fromArray([
-    'queueName' => 'emails',
-    'concurrency' => 10,
-]));
-
-$reportWorker = new SpooledWorker($client, WorkerOptions::fromArray([
-    'queueName' => 'reports',
-    'concurrency' => 2, // Reports are CPU-intensive
-]));
-
-$emailWorker->process(function ($ctx) {
-    return sendEmail($ctx['payload']);
-});
-
-$reportWorker->process(function ($ctx) {
-    return generateReport($ctx['payload']);
-});
-
-// Start both workers
-$emailWorker->start();
-$reportWorker->start();
-
-// Handle shutdown for all
-$shutdown = function () use ($emailWorker, $reportWorker) {
-    $emailWorker->stop();
-    $reportWorker->stop();
-};
-
-pcntl_signal(SIGTERM, $shutdown);
-pcntl_signal(SIGINT, $shutdown);
-
-// Main loop
-while ($emailWorker->isRunning() || $reportWorker->isRunning()) {
-    pcntl_signal_dispatch();
-    usleep(100000);
-}
-```
-
-## Concurrency Patterns
-
-### CPU-Bound Work
-
-For CPU-intensive tasks, limit concurrency:
-
-```php
-$worker = new SpooledWorker($client, WorkerOptions::fromArray([
-    'queueName' => 'image-processing',
-    'concurrency' => 2, // Match CPU cores - 2
-]));
-```
-
-### I/O-Bound Work
-
-For I/O-heavy tasks (HTTP, database), increase concurrency:
-
-```php
-$worker = new SpooledWorker($client, WorkerOptions::fromArray([
-    'queueName' => 'api-calls',
-    'concurrency' => 50, // Many parallel I/O operations
-]));
-```
-
-## Long-Running Jobs
-
-For jobs that take longer than the lease duration:
-
-```php
-$worker = new SpooledWorker($client, WorkerOptions::fromArray([
-    'queueName' => 'video-processing',
-    'leaseDuration' => 300,       // 5 minute lease
-    'heartbeatInterval' => 60,    // Heartbeat every minute
-]));
-
-$worker->process(function (array $ctx) {
-    // Long-running process
-    // Heartbeats are automatically sent to extend the lease
-    processVideo($ctx['payload']['videoUrl']);
-    return ['processed' => true];
-});
-```
-
-## Full Production Example
-
-```php
-<?php
-
-require_once 'vendor/autoload.php';
-
-use Spooled\SpooledClient;
-use Spooled\Config\ClientOptions;
-use Spooled\Worker\SpooledWorker;
-use Spooled\Worker\WorkerOptions;
-use Spooled\Errors\NonRetryableError;
-
-// Initialize client
-$client = new SpooledClient(
-    ClientOptions::fromArray([
-        'apiKey' => getenv('SPOOLED_API_KEY'),
-    ])
-);
-
-// Create worker
-$worker = new SpooledWorker($client, WorkerOptions::fromArray([
-    'queueName' => 'emails',
-    'concurrency' => 10,
-    'leaseDuration' => 60,
-    'heartbeatInterval' => 20,
-    'shutdownTimeout' => 30000,
-    'hostname' => gethostname(),
-    'metadata' => [
-        'version' => '1.0.0',
-        'environment' => getenv('APP_ENV') ?: 'production',
-    ],
-]));
-
-// Setup event handlers
-$worker->on('started', function ($event) {
-    echo "[" . date('Y-m-d H:i:s') . "] Worker started: {$event['workerId']}\n";
-});
-
-$worker->on('stopped', function ($event) {
-    echo "[" . date('Y-m-d H:i:s') . "] Worker stopped: {$event['reason']}\n";
-});
-
-$worker->on('job:completed', function ($event) {
-    echo "[" . date('Y-m-d H:i:s') . "] ✓ Completed: {$event['jobId']}\n";
-});
-
-$worker->on('job:failed', function ($event) {
-    echo "[" . date('Y-m-d H:i:s') . "] ✗ Failed: {$event['jobId']} - {$event['error']}\n";
-});
-
-// Define job handler
-$worker->process(function (array $ctx) {
-    $payload = $ctx['payload'];
-    
-    // Validate payload
-    if (empty($payload['to']) || empty($payload['template'])) {
-        throw new NonRetryableError('Missing required fields: to, template');
-    }
-    
-    // Send email
-    $result = sendEmail(
-        to: $payload['to'],
-        template: $payload['template'],
-        data: $payload['data'] ?? []
-    );
-    
-    return [
-        'sent' => true,
-        'messageId' => $result['messageId'],
-    ];
-});
-
-// Setup signal handlers
-$running = true;
-
-pcntl_signal(SIGTERM, function () use (&$running, $worker) {
-    echo "\nReceived SIGTERM, initiating graceful shutdown...\n";
-    $running = false;
-    $worker->stop();
-});
-
-pcntl_signal(SIGINT, function () use (&$running, $worker) {
-    echo "\nReceived SIGINT, initiating graceful shutdown...\n";
-    $running = false;
-    $worker->stop();
-});
-
-// Start worker
-echo "Starting email worker...\n";
-$worker->start();
-
-// Main loop
-while ($running && $worker->isRunning()) {
-    pcntl_signal_dispatch();
-    usleep(100000); // 100ms
-}
-
-// Cleanup
-$client->close();
-echo "Worker terminated.\n";
-
-// Helper function
-function sendEmail(string $to, string $template, array $data): array
-{
-    // Your email sending implementation
-    return ['messageId' => uniqid('msg_')];
-}
-```
-
-## Docker Deployment
+The official PHP CLI images can build both required worker extensions from bundled sources. gRPC/protobuf extensions are not needed unless the same application also uses the optional gRPC transport.
 
 ```dockerfile
 FROM php:8.2-cli
 
-# Install extensions
-RUN apt-get update && apt-get install -y \
-    libgrpc-dev \
-    && pecl install grpc protobuf \
-    && docker-php-ext-enable grpc protobuf
+RUN docker-php-ext-install pcntl posix
 
-# Install Composer
-COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
-
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 WORKDIR /app
+
 COPY composer.json composer.lock ./
-RUN composer install --no-dev --optimize-autoloader
+RUN composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
 
 COPY . .
 
-# Run worker
+STOPSIGNAL SIGTERM
 CMD ["php", "worker.php"]
 ```
 
+Keep the API key outside the image and give the worker enough time to honor its configured shutdown window:
+
 ```yaml
-# docker-compose.yml
+# compose.yaml
 services:
-  email-worker:
+  spooled-worker:
     build: .
+    restart: unless-stopped
     environment:
-      - SPOOLED_API_KEY=sk_live_...
-      - APP_ENV=production
-    deploy:
-      replicas: 3
-      restart_policy:
-        condition: on-failure
-    stop_grace_period: 30s
+      SPOOLED_API_KEY: ${SPOOLED_API_KEY}
+      APP_ENV: production
+    stop_grace_period: 45s
 ```
 
-## Supervisor Configuration
+Scale with `docker compose up --scale spooled-worker=4 -d`. The PHP file should construct `WorkerConfig` (not the removed `WorkerOptions` API), enable `pcntl_async_signals(true)`, register `SIGTERM`/`SIGINT` handlers that call `$worker->stop()`, and then call the blocking `$worker->start()` as shown above. Choose `stop_grace_period` longer than `shutdownTimeout` (milliseconds) plus application cleanup time.
+
+### Supervisor
+
+Install/enable `pcntl` and `posix` in the CLI PHP used by Supervisor, then run multiple independent processes:
 
 ```ini
 ; /etc/supervisor/conf.d/spooled-worker.conf
-[program:spooled-email-worker]
+[program:spooled-worker]
 command=/usr/bin/php /var/www/app/worker.php
 directory=/var/www/app
 user=www-data
 numprocs=4
 process_name=%(program_name)s_%(process_num)02d
 autostart=true
-autorestart=true
-startsecs=10
-stopwaitsecs=30
+autorestart=unexpected
+startsecs=5
+stopsignal=TERM
+stopasgroup=true
+killasgroup=true
+stopwaitsecs=45
+redirect_stderr=true
 stdout_logfile=/var/log/supervisor/spooled-worker.log
-stderr_logfile=/var/log/supervisor/spooled-worker-error.log
-environment=SPOOLED_API_KEY="sk_live_...",APP_ENV="production"
+environment=APP_ENV="production"
 ```
+
+Provide `SPOOLED_API_KEY` through the host environment, a secret manager, or a protected Supervisor include rather than committing it in this file. Keep `stopwaitsecs` longer than `WorkerConfig::shutdownTimeout`; after that deadline Supervisor sends `SIGKILL`, which bypasses worker deregistration and graceful cleanup.

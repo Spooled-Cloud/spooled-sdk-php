@@ -1,311 +1,205 @@
 # Configuration Guide
 
-This guide covers all configuration options for the Spooled PHP SDK.
+This guide documents the configuration surface in Spooled PHP SDK 1.0.17.
 
 ## Client Configuration
 
+`ClientOptions`, `RetryConfig`, and `CircuitBreakerConfig` are constructed directly with named arguments. They do not provide `fromArray()` factories.
+
 ```php
-use Spooled\SpooledClient;
+<?php
+
+use Spooled\Config\CircuitBreakerConfig;
 use Spooled\Config\ClientOptions;
 use Spooled\Config\RetryConfig;
-use Spooled\Config\CircuitBreakerConfig;
+use Spooled\SpooledClient;
 
-$client = new SpooledClient(
-    ClientOptions::fromArray([
-        // === Authentication (required - one of these) ===
-        'apiKey' => 'sk_live_...',           // API key (starts with sk_live_ or sk_test_)
-        'accessToken' => 'jwt_token',         // Or JWT access token
-        'refreshToken' => 'refresh_token',    // Optional: for auto token renewal
-        'adminKey' => 'admin_...',            // Optional: for admin endpoints
+$client = new SpooledClient(new ClientOptions(
+    // Configure at least one credential.
+    apiKey: 'sp_live_...',
+    // accessToken: 'jwt-token',
+    // refreshToken: 'refresh-token',
+    // adminKey: 'admin-key',
 
-        // === API Settings ===
-        'baseUrl' => 'https://api.spooled.cloud',  // REST API base URL (default)
-        'wsUrl' => 'wss://api.spooled.cloud',      // WebSocket URL for realtime
-        'grpcAddress' => 'grpc.spooled.cloud:443', // gRPC server address (default)
-        'timeout' => 30,                           // Request timeout in seconds (default: 30)
+    baseUrl: 'https://api.spooled.cloud',
+    // wsUrl defaults to the WebSocket form of baseUrl.
+    grpcAddress: 'grpc.spooled.cloud:443',
 
-        // === Retry Configuration ===
-        'retry' => RetryConfig::fromArray([
-            'maxRetries' => 3,                // Max retry attempts (default: 3)
-            'baseDelay' => 1000,              // Base delay in ms (default: 1000)
-            'maxDelay' => 30000,              // Max delay cap in ms (default: 30000)
-            'multiplier' => 2.0,              // Exponential backoff factor (default: 2.0)
-            'jitter' => true,                 // Add randomness to delays (default: true)
-        ]),
+    connectTimeout: 10.0,
+    requestTimeout: 30.0,
 
-        // === Circuit Breaker ===
-        'circuitBreaker' => CircuitBreakerConfig::fromArray([
-            'enabled' => true,                // Enable circuit breaker (default: true)
-            'failureThreshold' => 5,          // Failures to open circuit (default: 5)
-            'successThreshold' => 3,          // Successes to close circuit (default: 3)
-            'timeout' => 30000,               // Time before retry after open (default: 30000ms)
-        ]),
+    retry: new RetryConfig(
+        maxRetries: 3,
+        baseDelay: 1.0,
+        maxDelay: 30.0,
+        factor: 2.0,
+        jitter: 0.1,
+    ),
+    circuitBreaker: new CircuitBreakerConfig(
+        enabled: true,
+        failureThreshold: 5,
+        successThreshold: 2,
+        timeout: 30.0,
+    ),
 
-        // === Advanced ===
-        'headers' => [                        // Custom headers for all requests
-            'X-Custom-Header' => 'value',
-        ],
-        'userAgent' => 'my-app/1.0.0',        // Custom user agent
-    ])
-);
+    userAgent: 'my-app/1.0.0',
+    headers: ['X-Custom-Header' => 'value'],
+    // logger: $psr3Logger, // Optional: pass an application-provided PSR-3 logger.
+));
 ```
+
+The default `User-Agent` is `spooled-php/1.0.17`, derived from `Spooled\Version::VERSION`.
 
 ## Environment Variables
 
-The SDK can read configuration from environment variables:
-
-```bash
-# Required
-SPOOLED_API_KEY=sk_live_your_api_key
-
-# Optional
-SPOOLED_API_URL=https://api.spooled.cloud
-SPOOLED_WS_URL=wss://api.spooled.cloud
-SPOOLED_GRPC_ADDRESS=grpc.spooled.cloud:443
-SPOOLED_TIMEOUT=30
-```
-
-Example usage:
+The SDK does not implicitly load environment variables. Read them in your application and pass the values to `ClientOptions`:
 
 ```php
-$client = new SpooledClient(
-    ClientOptions::fromArray([
-        'apiKey' => getenv('SPOOLED_API_KEY'),
-        'baseUrl' => getenv('SPOOLED_API_URL') ?: 'https://api.spooled.cloud',
-        'grpcAddress' => getenv('SPOOLED_GRPC_ADDRESS') ?: 'grpc.spooled.cloud:443',
-    ])
-);
+$client = new SpooledClient(new ClientOptions(
+    apiKey: getenv('SPOOLED_API_KEY') ?: null,
+    baseUrl: getenv('SPOOLED_BASE_URL') ?: 'https://api.spooled.cloud',
+    wsUrl: getenv('SPOOLED_WS_URL') ?: null,
+    grpcAddress: getenv('SPOOLED_GRPC_ADDRESS') ?: 'grpc.spooled.cloud:443',
+    requestTimeout: (float) (getenv('SPOOLED_REQUEST_TIMEOUT') ?: 30),
+));
 ```
 
-## Self-Hosted Deployment
-
-If you're running your own Spooled instance:
-
-```php
-$client = new SpooledClient(
-    ClientOptions::fromArray([
-        'apiKey' => 'sk_live_your_key',
-        
-        // Point to your self-hosted instance
-        'baseUrl' => 'https://spooled.your-company.com',
-        
-        // WebSocket URL (if different from REST)
-        'wsUrl' => 'wss://spooled.your-company.com',
-        
-        // gRPC address (optional - only if using gRPC workers)
-        'grpcAddress' => 'grpc.your-company.com:443',
-    ])
-);
-```
-
-### Local Development
-
-```php
-$client = new SpooledClient(
-    ClientOptions::fromArray([
-        'apiKey' => 'sk_test_local_dev_key',
-        'baseUrl' => 'http://localhost:8080',
-        'grpcAddress' => 'localhost:50051',
-    ])
-);
-```
+Credentials are trimmed when options are constructed, so a trailing newline from a file or environment variable is removed.
 
 ## Retry Behavior
 
-The SDK uses exponential backoff with jitter for transient failures:
+The default retry policy uses exponential backoff in seconds with proportional ±10% jitter. For zero-indexed `attempt`, the implementation is:
 
+```text
+base = baseDelay * factor^attempt
+jittered = base + uniform(-1, 1) * base * jitter
+delay = min(max(jittered, 0), maxDelay)
 ```
-delay = min(maxDelay, baseDelay * (multiplier ^ attempt)) * (1 + random * jitter)
-```
 
-| Attempt | Base Delay | With Jitter (approx) |
-|---------|------------|----------------------|
-| 1       | 1000ms     | 1000-1500ms          |
-| 2       | 2000ms     | 2000-3000ms          |
-| 3       | 4000ms     | 4000-6000ms          |
+With the default `jitter: 0.1`, an unclamped 2-second base delay becomes 1.8–2.2 seconds. `Retry-After` takes precedence and is capped at `maxDelay` without random jitter. Network failures, timeouts, HTTP 429, and HTTP 5xx responses are retryable. Non-idempotent POST requests are retried only when the request is safe to repeat, such as when an idempotency key is supplied.
 
-### Retryable Errors
-
-By default, these errors trigger retries:
-
-- Network errors (connection refused, DNS failures)
-- Timeout errors
-- 429 Too Many Requests (respects `Retry-After` header)
-- 5xx Server errors
-
-Non-retryable errors:
-
-- 400 Bad Request
-- 401 Unauthorized
-- 403 Forbidden
-- 404 Not Found
-- 409 Conflict
-
-### Custom Retry Configuration
+Disable retries explicitly when needed:
 
 ```php
-$client = new SpooledClient(
-    ClientOptions::fromArray([
-        'apiKey' => 'sk_live_...',
-        'retry' => RetryConfig::fromArray([
-            'maxRetries' => 5,
-            'baseDelay' => 500,
-            'maxDelay' => 60000,
-            'multiplier' => 3.0,
-        ]),
-    ])
+$options = new ClientOptions(
+    apiKey: 'sp_live_...',
+    retry: RetryConfig::disabled(),
 );
 ```
 
 ## Circuit Breaker
 
-The circuit breaker prevents cascading failures by temporarily blocking requests after repeated failures.
-
-### States
-
-```
-CLOSED → (failures >= threshold) → OPEN → (timeout expires) → HALF_OPEN
-                                                                    ↓
-                              CLOSED ← (successes >= threshold) ←──┘
-                                                                    ↓
-                              OPEN ← (any failure) ←───────────────┘
-```
-
-### Configuration
+The circuit breaker counts transient failures (HTTP 429, HTTP 5xx, network errors, and timeouts), not ordinary HTTP 4xx responses.
 
 ```php
-$client = new SpooledClient(
-    ClientOptions::fromArray([
-        'apiKey' => 'sk_live_...',
-        'circuitBreaker' => CircuitBreakerConfig::fromArray([
-            'enabled' => true,
-            'failureThreshold' => 5,    // Open after 5 consecutive failures
-            'successThreshold' => 3,    // Close after 3 consecutive successes
-            'timeout' => 30000,         // Try again after 30 seconds
-        ]),
-    ])
+$options = new ClientOptions(
+    apiKey: 'sp_live_...',
+    circuitBreaker: new CircuitBreakerConfig(
+        failureThreshold: 5,
+        successThreshold: 2,
+        timeout: 30.0,
+    ),
 );
-```
 
-### Handling Circuit Breaker Errors
-
-```php
-use Spooled\Errors\CircuitBreakerOpenError;
-
-try {
-    $job = $client->jobs->create([
-        'queue' => 'emails',
-        'payload' => ['to' => 'user@example.com'],
-    ]);
-} catch (CircuitBreakerOpenError $e) {
-    echo "Circuit breaker is open, try again later\n";
-    echo "Will reset at: " . $e->resetAt->format('Y-m-d H:i:s') . "\n";
-}
-```
-
-### Checking Circuit Breaker Status
-
-```php
 $stats = $client->getCircuitBreakerStats();
-echo "State: " . $stats['state'] . "\n";        // 'closed', 'open', or 'half-open'
-echo "Failures: " . $stats['failures'] . "\n";
-echo "Successes: " . $stats['successes'] . "\n";
-```
-
-### Resetting Circuit Breaker
-
-```php
-// Reset after fixing the underlying issue
 $client->resetCircuitBreaker();
 ```
 
-## Multiple Clients
+Use `CircuitBreakerConfig::disabled()` to disable it.
 
-You can create multiple clients for different environments or API keys:
+## Self-Hosted and Local Endpoints
 
 ```php
-// Spooled Cloud (production)
-$cloudClient = new SpooledClient(
-    ClientOptions::fromArray([
-        'apiKey' => 'sk_live_production_key',
-    ])
-);
+$selfHosted = new SpooledClient(new ClientOptions(
+    apiKey: 'sp_live_...',
+    baseUrl: 'https://spooled.example.com',
+    wsUrl: 'wss://spooled.example.com',
+    grpcAddress: 'grpc.spooled.example.com:443',
+));
 
-// Self-hosted instance
-$selfHostedClient = new SpooledClient(
-    ClientOptions::fromArray([
-        'apiKey' => 'sk_live_self_hosted_key',
-        'baseUrl' => 'https://spooled.your-company.com',
-        'grpcAddress' => 'grpc.your-company.com:443',
-    ])
-);
-
-// Local development
-$localClient = new SpooledClient(
-    ClientOptions::fromArray([
-        'apiKey' => 'sk_test_dev_key',
-        'baseUrl' => 'http://localhost:8080',
-        'grpcAddress' => 'localhost:50051',
-    ])
-);
-
-// Admin client
-$adminClient = new SpooledClient(
-    ClientOptions::fromArray([
-        'apiKey' => 'sk_live_...',
-        'adminKey' => 'admin_super_secret',
-    ])
-);
+$local = new SpooledClient(new ClientOptions(
+    apiKey: 'sp_test_...',
+    baseUrl: 'http://localhost:8080',
+    grpcAddress: 'localhost:50051',
+));
 ```
+
+For standalone gRPC configuration, use `GrpcOptions` as shown in [grpc.md](grpc.md).
 
 ## Laravel Integration
 
+Define application settings in `config/spooled.php`:
+
 ```php
-// config/spooled.php
+<?php
+
 return [
     'api_key' => env('SPOOLED_API_KEY'),
-    'base_url' => env('SPOOLED_API_URL', 'https://api.spooled.cloud'),
+    'base_url' => env('SPOOLED_BASE_URL', 'https://api.spooled.cloud'),
     'grpc_address' => env('SPOOLED_GRPC_ADDRESS', 'grpc.spooled.cloud:443'),
-    'timeout' => env('SPOOLED_TIMEOUT', 30),
+    'request_timeout' => (float) env('SPOOLED_REQUEST_TIMEOUT', 30),
 ];
-
-// app/Providers/SpooledServiceProvider.php
-use Spooled\SpooledClient;
-use Spooled\Config\ClientOptions;
-
-$this->app->singleton(SpooledClient::class, function ($app) {
-    return new SpooledClient(
-        ClientOptions::fromArray([
-            'apiKey' => config('spooled.api_key'),
-            'baseUrl' => config('spooled.base_url'),
-            'grpcAddress' => config('spooled.grpc_address'),
-            'timeout' => config('spooled.timeout'),
-        ])
-    );
-});
 ```
+
+Register the client as a singleton in a service provider:
+
+```php
+<?php
+
+namespace App\Providers;
+
+use Illuminate\Support\ServiceProvider;
+use Spooled\Config\ClientOptions;
+use Spooled\SpooledClient;
+
+final class SpooledServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        $this->app->singleton(SpooledClient::class, static fn (): SpooledClient =>
+            new SpooledClient(new ClientOptions(
+                apiKey: config('spooled.api_key'),
+                baseUrl: config('spooled.base_url'),
+                grpcAddress: config('spooled.grpc_address'),
+                requestTimeout: (float) config('spooled.request_timeout'),
+            ))
+        );
+    }
+}
+```
+
+Type-hint `SpooledClient` in controllers, jobs, or services to resolve it from the container. Ensure `SPOOLED_API_KEY` is set before caching configuration with `php artisan config:cache`.
 
 ## Symfony Integration
 
+Because `SpooledClient` accepts a `ClientOptions` object, define both services explicitly:
+
 ```yaml
 # config/services.yaml
-parameters:
-    spooled.api_key: '%env(SPOOLED_API_KEY)%'
-    spooled.base_url: '%env(SPOOLED_API_URL)%'
-
 services:
-    Spooled\SpooledClient:
-        factory: ['Spooled\SpooledClient', 'create']
+    Spooled\Config\ClientOptions:
         arguments:
-            - apiKey: '%spooled.api_key%'
-              baseUrl: '%spooled.base_url%'
+            $apiKey: '%env(SPOOLED_API_KEY)%'
+            $baseUrl: '%env(default:spooled_default_base_url:SPOOLED_BASE_URL)%'
+            $grpcAddress: '%env(default:spooled_default_grpc_address:SPOOLED_GRPC_ADDRESS)%'
+            $requestTimeout: '%env(default:spooled_default_timeout:float:SPOOLED_REQUEST_TIMEOUT)%'
+
+    Spooled\SpooledClient:
+        arguments:
+            $options: '@Spooled\Config\ClientOptions'
+
+parameters:
+    spooled_default_base_url: 'https://api.spooled.cloud'
+    spooled_default_grpc_address: 'grpc.spooled.cloud:443'
+    spooled_default_timeout: 30
 ```
+
+You can then autowire `SpooledClient` into application services. If your Symfony version or deployment does not use env defaults, set all four environment variables and reference them directly instead.
 
 ## Cleanup
 
-Close the client when done to release resources:
-
 ```php
-// Close the client (closes gRPC connections, etc.)
 $client->close();
 ```
+
+Closing releases lazily created realtime and gRPC resources.

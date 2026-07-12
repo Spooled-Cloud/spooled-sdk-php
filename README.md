@@ -12,7 +12,7 @@ Official PHP SDK for [Spooled Cloud](https://spooled.cloud) - a modern job queue
 ## Features
 
 - **Full REST API support** - Jobs, queues, workers, schedules, workflows, webhooks, and more
-- **Worker runtime** - Process jobs with concurrency control, heartbeats, and graceful shutdown
+- **Worker runtime** - Process jobs with lease renewal, lease fencing, events, and graceful shutdown
 - **Realtime events** - SSE and WebSocket clients for live job/queue events
 - **Optional gRPC transport** - High-performance binary protocol when extensions are available
 - **Retry & circuit breaker** - Built-in resilience with exponential backoff and circuit breaker
@@ -32,7 +32,7 @@ Official PHP SDK for [Spooled Cloud](https://spooled.cloud) - a modern job queue
 
 ### Optional Extensions
 
-- `ext-pcntl` + `ext-posix` - Required by `SpooledWorker` to renew leases while synchronous handlers run (CLI Unix-like environments)
+- `ext-pcntl` + `ext-posix` - Required by `SpooledWorker` at startup for automatic lease renewal while synchronous handlers run (Unix-like CLI environments); REST/gRPC/realtime clients do not require them
 - `ext-grpc` + `ext-protobuf` - For gRPC transport support
 - WebSocket library (e.g., `ratchet/pawl`) - For WebSocket realtime support
 
@@ -224,7 +224,7 @@ $workflow = $client->workflows->create([
 
 // Get workflow status
 $workflow = $client->workflows->get($workflow->id);
-echo "Progress: {$workflow->progressPercent}%\n";
+echo "Progress: {$workflow->completedJobs}/{$workflow->totalJobs}\n";
 
 // List workflow jobs
 $jobs = $client->workflows->jobs->list($workflow->id);
@@ -345,7 +345,7 @@ $slug = $client->organizations->generateSlug('My Company');
 
 // Check if a slug is available
 $result = $client->organizations->checkSlug('my-company');
-echo $result->available ? 'Available' : 'Taken';
+echo $result['available'] ? 'Available' : 'Taken';
 
 // List organizations
 $orgs = $client->organizations->list();
@@ -629,6 +629,9 @@ echo "Created job: {$result['jobId']}\n";
 // Get queue stats
 $stats = $grpc->queue->getStats(['queueName' => 'fast-jobs']);
 
+// For manual dequeue loops, preserve the returned leaseId and echo it on
+// complete(), fail(), and renewLease(). renewLease uses extensionSecs.
+
 // Register worker
 $worker = $grpc->workers->register([
     'queueName' => 'fast-jobs',
@@ -698,6 +701,10 @@ try {
 }
 ```
 
+## Version Source
+
+Release `1.0.17` is defined once in `Spooled\Version::VERSION`. The default HTTP `User-Agent` and default `SpooledWorker` registration version derive from that constant. Application metadata may override the worker version explicitly.
+
 ## Development
 
 ```bash
@@ -726,10 +733,10 @@ The SDK includes parity test scripts that match the Node.js and Python SDK test 
 
 ```bash
 # Run local tests (requires running backend)
-API_KEY=your-key BASE_URL=http://localhost:8080 composer scripts:test-local
+API_KEY=sp_test_... BASE_URL=http://localhost:8080 composer scripts:test-local
 
 # Run production tests (safe subset)
-API_KEY=your-key composer scripts:test-production
+API_KEY=sp_live_... composer scripts:test-production
 
 # Interactive verification
 composer scripts:verify-production

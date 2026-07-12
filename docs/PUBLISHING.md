@@ -37,7 +37,7 @@ https://packagist.org/packages/spooled-cloud/spooled
    - **Variable** `PACKAGIST_USERNAME`: Your Packagist username
    - **Secret** `PACKAGIST_TOKEN`: Your Packagist API token
 
-The GitHub Actions workflow will automatically notify Packagist on each release.
+When both values are configured, the tag-triggered GitHub Actions workflow attempts to notify Packagist after creating the GitHub Release. The notification is skipped when `PACKAGIST_USERNAME` is unset and is best-effort when it runs.
 
 #### Option B: GitHub Webhook (Alternative)
 
@@ -56,23 +56,29 @@ The GitHub Actions workflow will automatically notify Packagist on each release.
 
 ### Creating a New Release
 
-1. **Update version references** (if any) in the code
+1. **Update release metadata before tagging**:
+   - Set `Spooled\Version::VERSION` in `src/Version.php`.
+   - Add the release entry to `CHANGELOG.md`.
+   - Ensure current-version documentation is aligned.
+   - Run `composer validate --strict`, `composer format:check`, `composer analyse`, and `composer test`.
 
-2. **Create and push a version tag**:
+2. **Create and push a version tag from the release commit**:
    ```bash
    # For a stable release
-   git tag v1.0.0
-   git push origin v1.0.0
+   git tag v1.0.17
+   git push origin v1.0.17
    
    # For a pre-release
    git tag v1.1.0-beta.1
    git push origin v1.1.0-beta.1
    ```
 
-3. **GitHub Actions will automatically**:
-   - Run all tests
-   - Create a GitHub Release with changelog
-   - Notify Packagist to update the package
+3. **The tag-triggered `Release` workflow will**:
+   - Run PHPStan, code-style checks, and the unit test script on PHP 8.2.
+   - Create a GitHub Release whose notes are generated from commits since the previous tag.
+   - Notify Packagist only when the `PACKAGIST_USERNAME` repository variable is configured. The notification is best-effort (`continue-on-error`), so verify Packagist separately.
+
+The workflow does not change `src/Version.php` or `CHANGELOG.md`; those must already match the tag.
 
 ### Version Numbering
 
@@ -104,11 +110,13 @@ Or go to your package page on Packagist and click **"Update"**.
 
 After releasing:
 
-1. **Check Packagist**: Visit [packagist.org/packages/spooled-cloud/spooled](https://packagist.org/packages/spooled-cloud/spooled)
-2. **Verify the version**: The new version should appear within a few minutes
-3. **Test installation**:
+1. **Check the GitHub Release workflow**: all required jobs must succeed; the Packagist job may be skipped when `PACKAGIST_USERNAME` is not configured.
+2. **Check Packagist**: Visit [packagist.org/packages/spooled-cloud/spooled](https://packagist.org/packages/spooled-cloud/spooled).
+3. **Verify the version**: The new version should appear within a few minutes.
+4. **Test the exact release in a clean directory**:
    ```bash
-   composer require spooled-cloud/spooled:^1.0
+   composer require spooled-cloud/spooled:1.0.17
+   php -r "require 'vendor/autoload.php'; echo Spooled\\Version::VERSION, PHP_EOL;"
    ```
 
 ## Troubleshooting
@@ -129,7 +137,7 @@ Packagist validates your `composer.json`. Common issues:
 
 Validate locally:
 ```bash
-composer validate
+composer validate --strict
 ```
 
 ### Tag not triggering release

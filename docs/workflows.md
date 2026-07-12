@@ -1,362 +1,104 @@
 # Workflows Guide
 
-Workflows let you orchestrate multiple jobs with dependencies, creating directed acyclic graphs (DAGs) of job execution.
+Workflows create a directed acyclic graph (DAG) of jobs. In the current PHP SDK, submit the complete job graph in `workflows->create()`; there are no `addJob()` or `start()` methods.
 
-## Basic Workflow
-
-```php
-use Spooled\SpooledClient;
-use Spooled\Config\ClientOptions;
-
-$client = new SpooledClient(
-    ClientOptions::fromArray(['apiKey' => 'sk_live_...'])
-);
-
-// Create a workflow
-$workflow = $client->workflows->create([
-    'name' => 'Order Processing',
-    'description' => 'Process customer order: validate, charge, fulfill',
-]);
-
-echo "Workflow ID: {$workflow->id}\n";
-```
-
-## Adding Jobs with Dependencies
-
-```php
-// Job 1: Validate order (no dependencies - runs first)
-$validateJob = $client->workflows->addJob($workflow->id, [
-    'queue' => 'orders',
-    'payload' => [
-        'action' => 'validate',
-        'orderId' => 'order-123',
-    ],
-    'name' => 'validate-order',
-]);
-
-// Job 2: Charge payment (depends on validation)
-$chargeJob = $client->workflows->addJob($workflow->id, [
-    'queue' => 'payments',
-    'payload' => [
-        'action' => 'charge',
-        'orderId' => 'order-123',
-        'amount' => 99.99,
-    ],
-    'name' => 'charge-payment',
-    'dependencies' => [$validateJob->id],
-]);
-
-// Job 3: Send confirmation (depends on payment)
-$emailJob = $client->workflows->addJob($workflow->id, [
-    'queue' => 'emails',
-    'payload' => [
-        'action' => 'send_confirmation',
-        'orderId' => 'order-123',
-    ],
-    'name' => 'send-confirmation',
-    'dependencies' => [$chargeJob->id],
-]);
-
-// Job 4: Update inventory (depends on payment, runs parallel to email)
-$inventoryJob = $client->workflows->addJob($workflow->id, [
-    'queue' => 'inventory',
-    'payload' => [
-        'action' => 'update',
-        'orderId' => 'order-123',
-    ],
-    'name' => 'update-inventory',
-    'dependencies' => [$chargeJob->id],
-]);
-```
-
-## Workflow Visualization
-
-The above creates this DAG:
-
-```
-          ┌─────────────┐
-          │  Validate   │
-          │   Order     │
-          └──────┬──────┘
-                 │
-          ┌──────▼──────┐
-          │   Charge    │
-          │  Payment    │
-          └──────┬──────┘
-                 │
-        ┌────────┴────────┐
-        │                 │
- ┌──────▼──────┐   ┌──────▼──────┐
- │    Send     │   │   Update    │
- │ Confirmation│   │  Inventory  │
- └─────────────┘   └─────────────┘
-```
-
-## Starting a Workflow
-
-```php
-// Start the workflow (begins executing jobs)
-$client->workflows->start($workflow->id);
-
-// Or create and start in one call
-$workflow = $client->workflows->create([
-    'name' => 'Quick Process',
-    'autoStart' => true,  // Starts immediately
-]);
-```
-
-## Workflow Status
-
-```php
-// Get workflow status
-$status = $client->workflows->get($workflow->id);
-
-echo "Status: {$status->status}\n";      // 'pending', 'running', 'completed', 'failed'
-echo "Progress: {$status->progress}%\n"; // 0-100
-
-// Detailed job status
-foreach ($status->jobs as $job) {
-    echo "{$job['name']}: {$job['status']}\n";
-}
-```
-
-## Cancelling a Workflow
-
-```php
-// Cancel the entire workflow
-$client->workflows->cancel($workflow->id);
-// All pending jobs are cancelled; running jobs complete or fail
-```
-
-## Retrying Failed Workflows
-
-```php
-// If a workflow fails, you can retry it
-$client->workflows->retry($workflow->id);
-// Only failed jobs are retried; completed jobs are skipped
-```
-
-## Listing Workflows
-
-```php
-// List all workflows
-$workflows = $client->workflows->list([
-    'status' => 'running',  // Optional: filter by status
-    'limit' => 50,
-]);
-
-foreach ($workflows->data as $workflow) {
-    echo "{$workflow->id}: {$workflow->name} - {$workflow->status}\n";
-}
-```
-
-## Complex DAG Example
-
-Here's a more complex e-commerce order processing workflow:
+## Create a Workflow
 
 ```php
 <?php
 
-use Spooled\SpooledClient;
 use Spooled\Config\ClientOptions;
+use Spooled\SpooledClient;
 
-$client = new SpooledClient(
-    ClientOptions::fromArray(['apiKey' => getenv('SPOOLED_API_KEY')])
-);
+$client = new SpooledClient(new ClientOptions(apiKey: 'sp_live_...'));
 
-function createOrderWorkflow(SpooledClient $client, array $order): string
-{
-    $workflow = $client->workflows->create([
-        'name' => "Order #{$order['id']}",
-        'description' => "Process order for {$order['customer']['email']}",
-    ]);
-
-    // Stage 1: Validation (parallel)
-    $validateOrder = $client->workflows->addJob($workflow->id, [
-        'queue' => 'validation',
-        'payload' => ['action' => 'validate_order', 'order' => $order],
-        'name' => 'validate-order',
-    ]);
-
-    $checkInventory = $client->workflows->addJob($workflow->id, [
-        'queue' => 'validation',
-        'payload' => ['action' => 'check_inventory', 'items' => $order['items']],
-        'name' => 'check-inventory',
-    ]);
-
-    $fraudCheck = $client->workflows->addJob($workflow->id, [
-        'queue' => 'validation',
-        'payload' => ['action' => 'fraud_check', 'customer' => $order['customer']],
-        'name' => 'fraud-check',
-    ]);
-
-    // Stage 2: Payment (depends on all validations)
-    $processPayment = $client->workflows->addJob($workflow->id, [
-        'queue' => 'payments',
-        'payload' => [
-            'action' => 'process',
-            'amount' => $order['total'],
-            'paymentMethod' => $order['payment'],
+$workflow = $client->workflows->create([
+    'name' => 'Order Processing',
+    'description' => 'Validate, charge, then fulfill an order',
+    'jobs' => [
+        [
+            'key' => 'validate',
+            'queue' => 'orders',
+            'payload' => ['action' => 'validate', 'orderId' => 'ORD-123'],
         ],
-        'name' => 'process-payment',
-        'dependencies' => [$validateOrder->id, $checkInventory->id, $fraudCheck->id],
-    ]);
-
-    // Stage 3: Fulfillment (parallel, depends on payment)
-    $reserveInventory = $client->workflows->addJob($workflow->id, [
-        'queue' => 'inventory',
-        'payload' => ['action' => 'reserve', 'items' => $order['items']],
-        'name' => 'reserve-inventory',
-        'dependencies' => [$processPayment->id],
-    ]);
-
-    $createShipping = $client->workflows->addJob($workflow->id, [
-        'queue' => 'shipping',
-        'payload' => ['action' => 'create_label', 'address' => $order['shipping']],
-        'name' => 'create-shipping',
-        'dependencies' => [$processPayment->id],
-    ]);
-
-    // Stage 4: Notifications (depends on fulfillment)
-    $sendConfirmation = $client->workflows->addJob($workflow->id, [
-        'queue' => 'emails',
-        'payload' => [
-            'template' => 'order_confirmation',
-            'to' => $order['customer']['email'],
-            'data' => $order,
+        [
+            'key' => 'charge',
+            'queue' => 'payments',
+            'payload' => ['action' => 'charge', 'orderId' => 'ORD-123'],
+            'dependsOn' => ['validate'],
         ],
-        'name' => 'send-confirmation',
-        'dependencies' => [$reserveInventory->id, $createShipping->id],
-    ]);
-
-    $sendSms = $client->workflows->addJob($workflow->id, [
-        'queue' => 'sms',
-        'payload' => [
-            'to' => $order['customer']['phone'],
-            'message' => "Order #{$order['id']} confirmed!",
+        [
+            'key' => 'email',
+            'queue' => 'notifications',
+            'payload' => ['action' => 'confirm', 'orderId' => 'ORD-123'],
+            'dependsOn' => ['charge'],
         ],
-        'name' => 'send-sms',
-        'dependencies' => [$processPayment->id],
-    ]);
+        [
+            'key' => 'fulfill',
+            'queue' => 'fulfillment',
+            'payload' => ['action' => 'ship', 'orderId' => 'ORD-123'],
+            'dependsOn' => ['charge'],
+        ],
+    ],
+]);
 
-    // Stage 5: Analytics (depends on all, fire-and-forget)
-    $trackOrder = $client->workflows->addJob($workflow->id, [
-        'queue' => 'analytics',
-        'payload' => ['event' => 'order_completed', 'order' => $order],
-        'name' => 'track-analytics',
-        'dependencies' => [$sendConfirmation->id],
-    ]);
+echo "Workflow: {$workflow->id} ({$workflow->status})\n";
+```
 
-    // Start the workflow
-    $client->workflows->start($workflow->id);
+Dependencies refer to job `key` values in the same request. The graph above runs `email` and `fulfill` after `charge` succeeds.
 
-    return $workflow->id;
+## Read Status and Jobs
+
+```php
+$current = $client->workflows->get($workflow->id);
+echo "{$current->completedJobs}/{$current->totalJobs} complete\n";
+
+$jobs = $client->workflows->jobs->list($workflow->id);
+foreach ($jobs as $job) {
+    echo "{$job->key}: {$job->status}\n";
 }
 
-// Usage
-$order = [
-    'id' => 'ORD-12345',
-    'customer' => [
-        'email' => 'customer@example.com',
-        'phone' => '+1234567890',
-    ],
-    'items' => [
-        ['sku' => 'PROD-001', 'qty' => 2],
-        ['sku' => 'PROD-002', 'qty' => 1],
-    ],
-    'total' => 149.99,
-    'payment' => ['method' => 'card', 'token' => 'tok_xxx'],
-    'shipping' => [
-        'name' => 'John Doe',
-        'address' => '123 Main St',
-        'city' => 'New York',
-        'zip' => '10001',
-    ],
-];
-
-$workflowId = createOrderWorkflow($client, $order);
-echo "Created workflow: {$workflowId}\n";
+$statuses = $client->workflows->jobs->getStatus($workflow->id);
+$job = $client->workflows->jobs->get($workflow->id, $jobId);
 ```
 
-## Workflow Events
-
-Monitor workflow progress with events:
+## List, Cancel, Retry, and Delete
 
 ```php
-// Using SSE to monitor workflow
-$realtime = $client->realtime();
+$workflows = $client->workflows->list([
+    'status' => 'running',
+    'limit' => 50,
+]);
 
-$realtime->subscribe("workflow:{$workflow->id}", function (array $event) {
-    echo "Workflow event: {$event['type']}\n";
-    
-    switch ($event['type']) {
-        case 'workflow:job_completed':
-            echo "  Job {$event['jobId']} completed\n";
-            break;
-        case 'workflow:job_failed':
-            echo "  Job {$event['jobId']} failed: {$event['error']}\n";
-            break;
-        case 'workflow:completed':
-            echo "  Workflow completed!\n";
-            break;
-        case 'workflow:failed':
-            echo "  Workflow failed!\n";
-            break;
-    }
-});
+$cancelled = $client->workflows->cancel($workflow->id);
+$retried = $client->workflows->retry($workflow->id); // failed workflows only
+$client->workflows->delete($workflow->id);
 ```
 
-## Workflow Options
+Retry resets failed/dead-letter jobs to pending and resumes a failed workflow. Completed jobs are not recreated.
+
+## Job Dependency Operations
+
+The workflow-jobs sub-resource can inspect and add dependencies for an existing job:
 
 ```php
-$workflow = $client->workflows->create([
-    'name' => 'My Workflow',
-    'description' => 'Optional description',
-    
-    // Timeout for entire workflow (seconds)
-    'timeout' => 3600,  // 1 hour
-    
-    // What to do when a job fails
-    'onJobFailure' => 'cancel',  // 'cancel' | 'continue' | 'pause'
-    
-    // Metadata
-    'metadata' => [
-        'source' => 'api',
-        'triggeredBy' => 'user-123',
-    ],
+$withDependencies = $client->workflows->jobs->getDependencies($jobId);
+
+$result = $client->workflows->jobs->addDependencies($jobId, [
+    'dependsOnJobIds' => [$upstreamJobId],
 ]);
 ```
 
-## Error Handling
+Use this API only with valid job IDs and an acyclic dependency relationship.
 
-```php
-use Spooled\Errors\NotFoundError;
-use Spooled\Errors\ValidationError;
+## Monitoring
 
-try {
-    // Create with invalid circular dependency
-    $client->workflows->addJob($workflow->id, [
-        'queue' => 'test',
-        'payload' => [],
-        'dependencies' => ['non-existent-job-id'],
-    ]);
-} catch (ValidationError $e) {
-    echo "Validation error: {$e->getMessage()}\n";
-} catch (NotFoundError $e) {
-    echo "Workflow not found: {$e->getMessage()}\n";
-}
-```
+Poll `workflows->get()` or use the SDK's realtime client and register supported dotted event handlers. Do not use the old topic-style `subscribe("workflow:...")` API; it is not part of the current realtime surface.
 
 ## Best Practices
 
-1. **Keep jobs idempotent**: Jobs may be retried, so they should handle re-execution gracefully.
-
-2. **Use meaningful names**: Give each job a descriptive name for easier debugging.
-
-3. **Handle partial failures**: Consider what happens if some jobs complete but others fail.
-
-4. **Set appropriate timeouts**: Both per-job and workflow-level timeouts help prevent stuck workflows.
-
-5. **Monitor progress**: Use real-time events or polling to track workflow execution.
-
-6. **Design for failure**: Plan recovery strategies for each stage of your workflow.
+1. Keep every job idempotent because retries and lease recovery can re-execute work.
+2. Use stable, descriptive keys and reference those keys in `dependsOn`.
+3. Keep payloads limited to data needed by each stage.
+4. Handle partial failure explicitly and retry only failed workflows.
+5. Poll or subscribe to supported realtime event types for operational visibility.

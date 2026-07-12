@@ -43,7 +43,7 @@ $result = $client->jobs->list([
     'offset' => 0,                      // Pagination offset
 ]);
 
-foreach ($result->data as $job) {
+foreach ($result->jobs as $job) {
     echo "{$job->id}: {$job->status}\n";
 }
 ```
@@ -95,8 +95,9 @@ $result = $client->jobs->bulkEnqueue([
         ['payload' => ['n' => 3], 'maxRetries' => 5],
     ],
 ]);
-// $result->jobIds: ['job_1', 'job_2', 'job_3']
-// $result->enqueuedCount: 3
+// $result->succeeded: entries with index, jobId, and created
+// $result->successCount: 3
+// $result->failureCount: 0
 ```
 
 ### Batch Status
@@ -115,8 +116,8 @@ $result = $client->jobs->claim([
     'limit' => 10,
     'leaseDurationSecs' => 300,
 ]);
-// $result->jobs: array of Job objects
-// $result->claimedCount: int
+// $result->jobs: array of ClaimedJob objects; preserve each $job->leaseId
+// count($result->jobs): number claimed
 ```
 
 ### Complete Job
@@ -125,6 +126,7 @@ $result = $client->jobs->claim([
 $client->jobs->complete('job_id', [
     'workerId' => 'worker-1',
     'result' => ['success' => true],
+    'leaseId' => $claimedJob->leaseId, // fencing token from claim, when present
 ]);
 ```
 
@@ -134,6 +136,7 @@ $client->jobs->complete('job_id', [
 $client->jobs->fail('job_id', [
     'workerId' => 'worker-1',
     'error' => 'Something went wrong',
+    'leaseId' => $claimedJob->leaseId, // fencing token from claim, when present
 ]);
 ```
 
@@ -143,6 +146,7 @@ $client->jobs->fail('job_id', [
 $client->jobs->heartbeat('job_id', [
     'workerId' => 'worker-1',
     'leaseDurationSecs' => 300,
+    'leaseId' => $claimedJob->leaseId, // fencing token from claim, when present
 ]);
 ```
 
@@ -150,21 +154,25 @@ $client->jobs->heartbeat('job_id', [
 
 ```php
 // List DLQ jobs
-$dlqJobs = $client->dlq->list([
+$dlqJobs = $client->jobs->dlq->list([
     'queue' => 'my-queue',
     'limit' => 50,
 ]);
 
-// Retry specific DLQ jobs
-$client->dlq->retry([
+// Retry specific jobs or a bounded queue batch
+$client->jobs->dlq->retry([
     'jobIds' => ['job_1', 'job_2'],
 ]);
+$client->jobs->dlq->retry([
+    'queue' => 'my-queue',
+    'limit' => 50,
+]);
 
-// Retry all DLQ jobs for a queue
-$client->dlq->retryAll('my-queue');
-
-// Purge DLQ
-$client->dlq->purge('my-queue', true); // true = confirm
+// Purge DLQ (confirmation is required)
+$client->jobs->dlq->purge([
+    'queue' => 'my-queue',
+    'confirm' => true,
+]);
 ```
 
 ---
@@ -175,8 +183,8 @@ $client->dlq->purge('my-queue', true); // true = confirm
 
 ```php
 $queues = $client->queues->list();
-foreach ($queues->data as $queue) {
-    echo "{$queue->queueName}: {$queue->enabled}\n";
+foreach ($queues->queues as $queue) {
+    echo "{$queue->name}: " . ($queue->paused ? 'paused' : 'active') . "\n";
 }
 ```
 
@@ -278,8 +286,8 @@ echo "Job ID: {$result->jobId}\n";
 ### Get History
 
 ```php
-$runs = $client->schedules->getHistory('schedule_id', 10);
-// Last 10 executions
+$runs = $client->schedules->history('schedule_id', ['limit' => 10]);
+// Up to 10 executions
 ```
 
 ---
@@ -288,43 +296,32 @@ $runs = $client->schedules->getHistory('schedule_id', 10);
 
 ### Create Workflow
 
+Submit the complete DAG in one call; dependencies reference job keys:
+
 ```php
 $workflow = $client->workflows->create([
     'name' => 'ETL Pipeline',
     'description' => 'Extract, transform, load data',
+    'jobs' => [
+        ['key' => 'extract', 'queue' => 'etl', 'payload' => ['step' => 'extract']],
+        [
+            'key' => 'transform',
+            'queue' => 'etl',
+            'payload' => ['step' => 'transform'],
+            'dependsOn' => ['extract'],
+        ],
+    ],
 ]);
 ```
 
-### Add Job to Workflow
-
-```php
-$job = $client->workflows->addJob($workflow->id, [
-    'queue' => 'etl',
-    'payload' => ['step' => 'extract'],
-    'name' => 'extract-data',
-    'dependencies' => [],  // No dependencies - runs first
-]);
-
-$transformJob = $client->workflows->addJob($workflow->id, [
-    'queue' => 'etl',
-    'payload' => ['step' => 'transform'],
-    'name' => 'transform-data',
-    'dependencies' => [$job->id],
-]);
-```
-
-### Start Workflow
-
-```php
-$client->workflows->start($workflow->id);
-```
+There are no `addJob()` or `start()` methods; creation submits the graph. See [workflows.md](workflows.md) for dependency inspection and mutation methods.
 
 ### Get Workflow Status
 
 ```php
 $status = $client->workflows->get($workflow->id);
 echo "Status: {$status->status}\n";
-echo "Progress: {$status->progress}%\n";
+echo "Progress: {$status->completedJobs}/{$status->totalJobs}\n";
 ```
 
 ### Cancel Workflow
@@ -417,14 +414,14 @@ $worker = $client->workers->get('worker_id');
 
 ```php
 $registration = $client->workers->register([
-    'queueName' => 'my-queue',
-    'hostname' => gethostname(),
+    'queues' => ['my-queue'],
+    'name' => gethostname() ?: 'php-worker',
+    'concurrency' => 10,
     'workerType' => 'php',
-    'maxConcurrency' => 10,
-    'metadata' => ['version' => '1.0.0'],
+    'version' => \Spooled\Version::VERSION,
+    'metadata' => ['appVersion' => 'your-app-version'],
 ]);
 // $registration->id
-// $registration->leaseDurationSecs
 // $registration->heartbeatIntervalSecs
 ```
 
@@ -500,8 +497,8 @@ $result = $client->organizations->create([
 
 ```php
 $usage = $client->organizations->getUsage();
-echo "Plan: {$usage->planDisplayName}\n";
-echo "Jobs Today: {$usage->usage->jobsToday}\n";
+echo "Plan: {$usage->plan}\n";
+echo "Active jobs: {$usage->usage->activeJobs->current}\n";
 ```
 
 ### List Organizations
@@ -514,15 +511,15 @@ $orgs = $client->organizations->list();
 
 ```php
 $result = $client->organizations->checkSlug('my-company');
-echo "Available: " . ($result->available ? 'yes' : 'no') . "\n";
-echo "Suggestion: {$result->suggestion}\n";
+echo "Available: " . ($result['available'] ? 'yes' : 'no') . "\n";
+echo "Suggestions: " . implode(', ', $result['suggestions'] ?? []) . "\n";
 ```
 
 ### Generate Slug
 
 ```php
-$result = $client->organizations->generateSlug('My Company Name');
-echo "Slug: {$result->slug}\n";
+$slug = $client->organizations->generateSlug('My Company Name');
+echo "Slug: {$slug}\n";
 ```
 
 ---
@@ -552,27 +549,27 @@ $portal = $client->billing->createPortal([
 ### Login with API Key
 
 ```php
-$result = $client->auth->login('sk_live_...');
+$result = $client->auth->login('sp_live_...');
 // $result->accessToken
 // $result->refreshToken
 
 // Use JWT for subsequent requests
 $jwtClient = new SpooledClient(
-    ClientOptions::fromArray(['accessToken' => $result->accessToken])
+    new ClientOptions(accessToken: $result->accessToken)
 );
 ```
 
 ### Validate Token
 
 ```php
-$result = $client->auth->validate(['token' => $accessToken]);
+$result = $client->auth->validate($accessToken);
 echo "Valid: " . ($result->valid ? 'yes' : 'no') . "\n";
 ```
 
 ### Refresh Token
 
 ```php
-$result = $client->auth->refresh(['refreshToken' => $refreshToken]);
+$result = $client->auth->refresh($refreshToken);
 $newAccessToken = $result->accessToken;
 ```
 
@@ -596,11 +593,10 @@ $client->auth->logout();
 ### Get Dashboard Data
 
 ```php
-$dashboard = $client->dashboard->get();
-// $dashboard->system
-// $dashboard->jobs
+$dashboard = $client->dashboard->getStats();
+// $dashboard->totalJobs
 // $dashboard->queues
-// $dashboard->workers
+// $dashboard->system
 // $dashboard->recentActivity
 ```
 
@@ -611,15 +607,26 @@ $dashboard = $client->dashboard->get();
 ### Health Check
 
 ```php
-$health = $client->health->get();
+$health = $client->health->check();
 echo "Status: {$health->status}\n";
-echo "Database: {$health->database}\n";
+
+// The public health endpoint may omit version, so this property is nullable.
+if ($health->version !== null) {
+    echo "Version: {$health->version}\n";
+}
+```
+
+Do not use the public health response as deployment proof. For authenticated operational checks, read the backend version from dashboard data when the server supplies it:
+
+```php
+$dashboard = $client->dashboard->getStats();
+$version = $dashboard->system['version'] ?? null;
 ```
 
 ### Readiness
 
 ```php
-$ready = $client->health->readiness();
+$ready = $client->health->isReady();
 echo "Ready: " . ($ready ? 'yes' : 'no') . "\n";
 ```
 

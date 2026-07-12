@@ -16,8 +16,9 @@ composer require spooled-cloud/spooled
 - Composer
 - ext-json (usually bundled)
 
-### Optional Extensions
+### Runtime-Specific Extensions
 
+- `ext-pcntl` + `ext-posix` - Required when starting `SpooledWorker`; lease renewal for blocking handlers uses forked child processes on Unix-like CLI environments
 - `ext-grpc` + `ext-protobuf` - For gRPC transport support
 - WebSocket library (e.g., `ratchet/pawl`) - For WebSocket realtime support
 
@@ -32,7 +33,7 @@ use Spooled\SpooledClient;
 use Spooled\Config\ClientOptions;
 
 $client = new SpooledClient(new ClientOptions(
-    apiKey: 'sk_live_your_api_key',
+    apiKey: 'sp_live_your_api_key',
 ));
 ```
 
@@ -107,7 +108,7 @@ use Spooled\Config\CircuitBreakerConfig;
 
 $client = new SpooledClient(new ClientOptions(
     // Authentication (one of these)
-    apiKey: 'sk_live_your_api_key',
+    apiKey: 'sp_live_your_api_key',
     // accessToken: 'jwt-token',
     
     // URLs (optional)
@@ -209,7 +210,7 @@ $result = $client->jobs->bulkEnqueue([
     ],
 ]);
 
-echo "Created {$result->succeeded} jobs\n";
+echo "Created {$result->successCount} jobs; {$result->failureCount} failed\n";
 ```
 
 ## Schedules (Cron Jobs)
@@ -251,7 +252,7 @@ $workflow = $client->workflows->create([
 
 // Get workflow status
 $status = $client->workflows->get($workflow->id);
-echo "Progress: {$status->progressPercent}%\n";
+echo "Progress: {$status->completedJobs}/{$status->totalJobs}\n";
 
 // List workflow jobs
 $jobs = $client->workflows->jobs->list($workflow->id);
