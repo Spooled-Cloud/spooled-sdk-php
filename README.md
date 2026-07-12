@@ -32,6 +32,7 @@ Official PHP SDK for [Spooled Cloud](https://spooled.cloud) - a modern job queue
 
 ### Optional Extensions
 
+- `ext-pcntl` + `ext-posix` - Required by `SpooledWorker` to renew leases while synchronous handlers run (CLI Unix-like environments)
 - `ext-grpc` + `ext-protobuf` - For gRPC transport support
 - WebSocket library (e.g., `ratchet/pawl`) - For WebSocket realtime support
 
@@ -160,7 +161,10 @@ $result = $client->jobs->bulkEnqueue([
 
 ### Workers
 
-Process jobs with the built-in worker runtime:
+Process jobs with the built-in worker runtime. `SpooledWorker` uses short-lived
+`pcntl` renewal processes so blocking synchronous handlers keep their leases
+without requiring an event loop; install `ext-pcntl` and `ext-posix` in the CLI
+environment.
 
 ```php
 <?php

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Spooled\Config;
 
 use Psr\Log\LoggerInterface;
+use Spooled\Version;
 
 /**
  * Client configuration options.
@@ -17,7 +18,7 @@ final readonly class ClientOptions
 
     public const DEFAULT_REQUEST_TIMEOUT = 30.0;
 
-    public const DEFAULT_USER_AGENT = 'spooled-php/1.0.16';
+    public const DEFAULT_USER_AGENT = Version::USER_AGENT;
 
     public ?string $apiKey;
 

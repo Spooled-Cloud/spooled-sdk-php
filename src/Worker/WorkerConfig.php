@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Spooled\Worker;
 
+use InvalidArgumentException;
+
 /**
  * Worker configuration options.
  *
@@ -50,6 +52,12 @@ final readonly class WorkerConfig
         /** Auto-start worker after construction */
         public bool $autoStart = false,
     ) {
+        if ($this->leaseDuration <= 0) {
+            throw new InvalidArgumentException('leaseDuration must be greater than zero.');
+        }
+        if ($this->heartbeatFraction <= 0 || $this->heartbeatFraction >= 1) {
+            throw new InvalidArgumentException('heartbeatFraction must be greater than zero and less than one.');
+        }
     }
 
     /**

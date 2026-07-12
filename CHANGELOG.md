@@ -5,6 +5,32 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.17] - 2026-07-12
+
+### Fixed
+
+- `SpooledWorker` now reliably renews leases while blocking synchronous handlers
+  run on PHP 8.2+, using the configured `heartbeatFraction` and the immutable
+  lease ID without introducing an event-loop contract. Each renewal attempt
+  creates an isolated post-fork HTTP transport with retries disabled and a
+  request timeout bounded by the remaining lease plus a safety margin. Renewal
+  children install dedicated signal handlers, detect orphaning, and are stopped
+  with bounded TERM/KILL/reap cleanup before settlement. Terminal lease loss
+  cancels the execution and is surfaced through the worker `error` event and
+  logger.
+- Completion and failure rejections are no longer swallowed or reported as
+  successful settlements. Success counters/events advance only after the API
+  confirms settlement; rejected settlements emit a contextual worker `error`.
+- gRPC `renewLease()` now serializes the caller's `extensionSecs`. Normal-suite
+  wire tests cover dequeue, complete, fail, and renew lease fields.
+- HTTP `User-Agent` and default worker registration now read version `1.0.17`
+  from the same package version source.
+
+### Changed
+
+- `SpooledWorker` requires `ext-pcntl` and `ext-posix` in its CLI environment for
+  automatic synchronous-handler renewal. Other SDK clients remain unaffected.
+
 ## [1.0.16] - 2026-07-11
 
 ### Added

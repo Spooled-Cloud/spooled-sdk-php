@@ -48,6 +48,8 @@
     "suggest": {
         "ext-grpc": "Required for gRPC transport support",
         "ext-protobuf": "Required for gRPC transport support",
+        "ext-pcntl": "Required by SpooledWorker for automatic lease renewal during synchronous handlers",
+        "ext-posix": "Required by SpooledWorker for automatic lease renewal during synchronous handlers",
         "grpc/grpc": "Required for gRPC transport support",
         "google/protobuf": "Required for gRPC transport support",
         "ratchet/pawl": "Required for WebSocket realtime support"

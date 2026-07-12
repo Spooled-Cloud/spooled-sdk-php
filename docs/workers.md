@@ -1,6 +1,9 @@
 # Workers Guide
 
 This guide covers the `SpooledWorker` runtime for processing jobs from queues.
+The runtime requires PHP's `pcntl` and `posix` extensions (normally available in
+Unix-like CLI builds) to renew leases while synchronous handlers are running.
+It does not require an event loop.
 
 ## Basic Worker
 
@@ -46,7 +49,8 @@ $worker = new SpooledWorker($client, WorkerOptions::fromArray([
 
     // Lease Management
     'leaseDuration' => 30,         // Lease duration in seconds (default: 30)
-    'heartbeatInterval' => 10,     // Heartbeat every N seconds (default: 10)
+    'heartbeatFraction' => 0.5,    // Renew after this fraction of the lease (0 < value < 1)
+    'heartbeatInterval' => 15000,  // Worker heartbeat interval in ms (default: 15000)
 
     // Lifecycle
     'shutdownTimeout' => 30000,    // Max wait for graceful shutdown (default: 30000)

@@ -494,6 +494,10 @@ final class GrpcQueueResource
         $request->setJobId($params['jobId']);
         $request->setWorkerId($params['workerId']);
 
+        if (isset($params['extensionSecs'])) {
+            $request->setExtensionSecs((int) $params['extensionSecs']);
+        }
+
         // Lease fencing token from dequeue; when set, the renewal succeeds only
         // if it matches the job's current lease.
         if (isset($params['leaseId'])) {
