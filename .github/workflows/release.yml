@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
+      - "v*.*.*"
 
 permissions:
   contents: write
@@ -20,7 +20,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: "8.2"
           extensions: json, mbstring, grpc, protobuf
           coverage: none
           tools: composer:v2
@@ -38,10 +38,32 @@ jobs:
             ${{ runner.os }}-composer-8.2-
             ${{ runner.os }}-composer-
 
-      - name: Install dependencies
+      - name: Validate release metadata
         run: |
-          composer update --prefer-stable --prefer-dist --no-interaction --no-progress
-          composer require grpc/grpc google/protobuf --dev
+          if ! printf '%s' "$GITHUB_REF_NAME" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Release tag must be strict vX.Y.Z, got $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          export TAG_VERSION
+          php -r '
+          require "src/Version.php";
+          $expected = getenv("TAG_VERSION");
+          if (Spooled\Version::VERSION !== $expected) {
+              fwrite(STDERR, "Tag version {$expected} does not match Spooled\\Version::VERSION " . Spooled\Version::VERSION . PHP_EOL);
+              exit(1);
+          }
+          '
+          grep -E "^## \\[$TAG_VERSION\\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md
+
+      - name: Validate Composer metadata
+        run: composer validate --strict
+
+      - name: Install locked dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
+
+      - name: Verify lock file is unchanged
+        run: git diff --exit-code -- composer.lock
 
       - name: Run PHPStan
         run: composer analyse
@@ -67,46 +89,39 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
 
-      - name: Generate changelog
-        id: changelog
+      - name: Generate release notes
         run: |
-          # Get commits since last tag
-          PREVIOUS_TAG=$(git describe --abbrev=0 --tags HEAD^ 2>/dev/null || echo "")
-          if [ -n "$PREVIOUS_TAG" ]; then
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" $PREVIOUS_TAG..HEAD)
-          else
-            CHANGELOG=$(git log --pretty=format:"- %s (%h)" HEAD~10..HEAD)
-          fi
-          
-          # Escape for GitHub Actions
-          CHANGELOG="${CHANGELOG//'%'/'%25'}"
-          CHANGELOG="${CHANGELOG//$'\n'/'%0A'}"
-          CHANGELOG="${CHANGELOG//$'\r'/'%0D'}"
-          
-          echo "CHANGELOG=$CHANGELOG" >> $GITHUB_OUTPUT
+          PREVIOUS_TAG="$(git describe --abbrev=0 --tags HEAD^ 2>/dev/null || true)"
+          {
+            echo "## Spooled PHP SDK v${{ steps.version.outputs.VERSION }}"
+            echo
+            echo "### Installation"
+            echo
+            echo '```bash'
+            echo "composer require spooled-cloud/spooled"
+            echo '```'
+            echo
+            echo "### Changes"
+            echo
+            if [ -n "$PREVIOUS_TAG" ]; then
+              git log --pretty=format:"- %s (%h)" "$PREVIOUS_TAG"..HEAD
+            else
+              git log --pretty=format:"- %s (%h)" -n 10 HEAD
+            fi
+            echo
+            echo
+            echo "### Links"
+            echo
+            echo "- [Documentation](https://github.com/spooled-cloud/spooled-sdk-php#readme)"
+            echo "- [Packagist](https://packagist.org/packages/spooled-cloud/spooled)"
+            echo "- [API Reference](https://spooled.cloud/docs)"
+          } > release-notes.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
           name: v${{ steps.version.outputs.VERSION }}
-          body: |
-            ## Spooled PHP SDK v${{ steps.version.outputs.VERSION }}
-            
-            ### Installation
-            
-            ```bash
-            composer require spooled-cloud/spooled
-            ```
-            
-            ### Changes
-            
-            ${{ steps.changelog.outputs.CHANGELOG }}
-            
-            ### Links
-            
-            - [Documentation](https://github.com/spooled-cloud/spooled-sdk-php#readme)
-            - [Packagist](https://packagist.org/packages/spooled-cloud/spooled)
-            - [API Reference](https://spooled.cloud/docs)
+          body_path: release-notes.md
           draft: false
           prerelease: ${{ contains(github.ref, 'alpha') || contains(github.ref, 'beta') || contains(github.ref, 'rc') }}
         env:

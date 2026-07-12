@@ -80,6 +80,32 @@ When both values are configured, the tag-triggered GitHub Actions workflow attem
 
 The workflow does not change `src/Version.php` or `CHANGELOG.md`; those must already match the tag.
 
+### Release evidence checklist
+
+These checks are non-blocking operational guidance for release preparation. The automated tag/version checks run only in the tag-triggered release workflow, so they do not block research branches or ordinary commits. Packagist and GitHub caches may update at different times; verify the Composer metadata endpoint and an exact clean install before calling a release published. Never move or recreate an indexed stable tag.
+
+#### Before creating `vX.Y.Z`
+
+- [ ] `Spooled\Version::VERSION` is exactly `X.Y.Z`.
+- [ ] `Spooled\Version::USER_AGENT`, `ClientOptions::DEFAULT_USER_AGENT`, and the default `SpooledWorker` registration all derive from that constant.
+- [ ] `CHANGELOG.md` contains `## [X.Y.Z] - YYYY-MM-DD`.
+- [ ] Release-specific references in `README.md`, `docs/configuration.md`, `docs/workers.md`, tests, and this guide are synchronized or intentionally version-neutral.
+- [ ] `composer validate --strict`, `composer format:check`, `composer analyse`, and `composer test` succeed.
+- [ ] `composer install` from the committed lock succeeds, and any intentional dependency change has an updated `composer.lock`.
+- [ ] The checked-in gRPC stubs match the intended backend proto. Record the backend commit, proto SHA-256, `protoc --version`, and `grpc_php_plugin` version used to generate them.
+- [ ] The generated gRPC classes load with the minimum supported PHP, `grpc/grpc`, and `google/protobuf` versions.
+- [ ] `git diff --exit-code` is clean after all generation and validation steps.
+
+#### After pushing the tag
+
+- [ ] `git rev-list -n 1 vX.Y.Z` is the expected immutable release commit.
+- [ ] The GitHub Release exists and its displayed version and commit match `vX.Y.Z`.
+- [ ] `https://repo.packagist.org/p2/spooled-cloud/spooled.json` contains `vX.Y.Z` with the exact tag commit as both source and dist reference.
+- [ ] Any lag in the Packagist package page or detail API is recorded as cache lag rather than treated as proof that the Composer metadata is absent.
+- [ ] A clean directory can run `composer require spooled-cloud/spooled:X.Y.Z --no-interaction`.
+- [ ] The installed package reports `Spooled\Version::VERSION === "X.Y.Z"`, uses `spooled-php/X.Y.Z`, and registers a default worker as `X.Y.Z`.
+- [ ] If Packagist indexed the wrong commit or immutable contents, publish a new patch version; do not move, delete, or recreate the existing stable tag.
+
 ### Version Numbering
 
 Follow [Semantic Versioning](https://semver.org/):
