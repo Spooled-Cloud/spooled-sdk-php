@@ -65,8 +65,8 @@ When both values are configured, the tag-triggered GitHub Actions workflow attem
 2. **Create and push a version tag from the release commit**:
    ```bash
    # For a stable release
-   git tag v1.0.17
-   git push origin v1.0.17
+   git tag v1.0.18
+   git push origin v1.0.18
    
    # For a pre-release
    git tag v1.1.0-beta.1
@@ -141,7 +141,7 @@ After releasing:
 3. **Verify the version**: The new version should appear within a few minutes.
 4. **Test the exact release in a clean directory**:
    ```bash
-   composer require spooled-cloud/spooled:1.0.17
+   composer require spooled-cloud/spooled:1.0.18
    php -r "require 'vendor/autoload.php'; echo Spooled\\Version::VERSION, PHP_EOL;"
    ```
 

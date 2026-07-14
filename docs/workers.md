@@ -1,6 +1,6 @@
 # Workers Guide
 
-This guide documents `SpooledWorker` in Spooled PHP SDK 1.0.17.
+This guide documents `SpooledWorker` in Spooled PHP SDK 1.0.18.
 
 ## Runtime Requirements
 
@@ -52,7 +52,7 @@ $config = new WorkerConfig(
     heartbeatInterval: 15000, // worker-registration heartbeat, milliseconds
     hostname: gethostname() ?: 'php-worker',
     workerType: 'php',
-    // version defaults to Spooled\Version::VERSION (1.0.17)
+    // version defaults to Spooled\Version::VERSION (1.0.18)
     metadata: ['environment' => 'production'],
 );
 ```

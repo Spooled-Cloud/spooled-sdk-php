@@ -5,6 +5,16 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.18] - 2026-07-14
+
+### Fixed
+
+- Release workflow validates package identity before publishing.
+
+### Changed
+
+- Docs: refresh SDK integration guides.
+
 ## [1.0.17] - 2026-07-12
 
 ### Fixed

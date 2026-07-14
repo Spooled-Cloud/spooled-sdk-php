@@ -1,6 +1,6 @@
 # Configuration Guide
 
-This guide documents the configuration surface in Spooled PHP SDK 1.0.17.
+This guide documents the configuration surface in Spooled PHP SDK 1.0.18.
 
 ## Client Configuration
 
@@ -48,7 +48,7 @@ $client = new SpooledClient(new ClientOptions(
 ));
 ```
 
-The default `User-Agent` is `spooled-php/1.0.17`, derived from `Spooled\Version::VERSION`.
+The default `User-Agent` is `spooled-php/1.0.18`, derived from `Spooled\Version::VERSION`.
 
 ## Environment Variables
 
