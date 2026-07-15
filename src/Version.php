@@ -6,7 +6,7 @@ namespace Spooled;
 
 final class Version
 {
-    public const VERSION = '1.0.19';
+    public const VERSION = '1.0.20';
 
     public const USER_AGENT = 'spooled-php/' . self::VERSION;
 
