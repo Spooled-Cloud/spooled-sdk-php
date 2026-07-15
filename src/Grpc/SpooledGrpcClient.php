@@ -228,6 +228,12 @@ final class GrpcQueueResource
             $request->setMaxRetries((int) $params['maxRetries']);
         }
 
+        if (isset($params['timeoutSeconds'])) {
+            $request->setTimeoutSeconds((int) $params['timeoutSeconds']);
+        } elseif (isset($params['timeout_seconds'])) {
+            $request->setTimeoutSeconds((int) $params['timeout_seconds']);
+        }
+
         if (isset($params['idempotencyKey'])) {
             $request->setIdempotencyKey((string) $params['idempotencyKey']);
         }

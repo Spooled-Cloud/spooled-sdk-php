@@ -32,7 +32,7 @@ final readonly class GrpcOptions
     public static function fromArray(array $data): self
     {
         return new self(
-            address: (string) ($data['address'] ?? 'localhost:50051'),
+            address: (string) ($data['address'] ?? 'grpc.spooled.cloud:443'),
             apiKey: isset($data['apiKey']) ? (string) $data['apiKey'] : null,
             secure: (bool) ($data['secure'] ?? true),
             timeout: isset($data['timeout']) ? (float) $data['timeout'] : null,

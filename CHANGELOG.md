@@ -5,6 +5,18 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.19] - 2026-07-15
+
+### Fixed
+
+- gRPC enqueue now sets `timeoutSeconds` when provided.
+- Default gRPC address is `grpc.spooled.cloud:443` (was `localhost:50051`).
+- `CreateJobParams` emits API `scheduledAt` / `timeoutSeconds`; `JobsResource::create` maps `scheduledFor` → `scheduledAt`.
+
+### Added
+
+- Agent knowledge base under `docs/ai/knowledge/` (+ KB sync Cursor rule).
+
 ## [1.0.18] - 2026-07-14
 
 ### Fixed

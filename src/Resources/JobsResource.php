@@ -83,6 +83,11 @@ final class JobsResource extends BaseResource
             $params['queueName'] = $params['queue'];
             unset($params['queue']);
         }
+        // Map SDK alias scheduledFor → API scheduledAt
+        if (isset($params['scheduledFor']) && !isset($params['scheduledAt'])) {
+            $params['scheduledAt'] = $params['scheduledFor'];
+            unset($params['scheduledFor']);
+        }
 
         $response = $this->httpClient->post('jobs', $params);
 

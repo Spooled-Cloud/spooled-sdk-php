@@ -155,6 +155,8 @@ final readonly class CreateJobParams
         public ?string $idempotencyKey = null,
         /** @var array<string>|null */
         public ?array $dependencies = null,
+        /** Job timeout in seconds (API `timeoutSeconds`). Trailing for positional BC. */
+        public int $timeoutSeconds = 300,
     ) {
     }
 
@@ -170,7 +172,9 @@ final readonly class CreateJobParams
             'payload' => $this->payload,
             'priority' => $this->priority,
             'maxRetries' => $this->maxRetries,
-            'scheduledFor' => $this->scheduledFor,
+            'timeoutSeconds' => $this->timeoutSeconds,
+            // API expects scheduledAt; scheduledFor is the SDK alias.
+            'scheduledAt' => $this->scheduledFor,
             'tags' => $this->tags,
             'metadata' => $this->metadata,
             'idempotencyKey' => $this->idempotencyKey,

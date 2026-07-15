@@ -173,7 +173,8 @@ final class JobTest extends TestCase
         $this->assertSame(['key' => 'value'], $array['payload']);
         $this->assertSame(10, $array['priority']);
         $this->assertSame(5, $array['maxRetries']);
-        $this->assertSame('2024-12-31T23:59:59Z', $array['scheduledFor']);
+        $this->assertSame('2024-12-31T23:59:59Z', $array['scheduledAt']);
+        $this->assertSame(300, $array['timeoutSeconds']);
         $this->assertSame(['tag1', 'tag2'], $array['tags']);
         $this->assertSame(['source' => 'test'], $array['metadata']);
     }
@@ -190,6 +191,7 @@ final class JobTest extends TestCase
 
         $this->assertArrayHasKey('queue', $array);
         $this->assertArrayHasKey('payload', $array);
+        $this->assertArrayNotHasKey('scheduledAt', $array);
         $this->assertArrayNotHasKey('scheduledFor', $array);
         $this->assertArrayNotHasKey('tags', $array);
         $this->assertArrayNotHasKey('metadata', $array);
