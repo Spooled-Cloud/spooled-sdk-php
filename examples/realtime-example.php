@@ -110,22 +110,28 @@ if (WebSocketClient::isAvailable()) {
     echo "\nMethod 3: WebSocket Client (available)\n";
     echo str_repeat('-', 40) . "\n";
 
-    $ws = new WebSocketClient(
-        wsUrl: str_replace('http', 'ws', getenv('BASE_URL') ?: 'wss://api.spooled.cloud') . '/api/v1/ws',
-        apiKey: getenv('API_KEY') ?: 'your-api-key',
-    );
+    $accessToken = getenv('ACCESS_TOKEN') ?: null;
 
-    // WebSocket allows bidirectional communication
-    $ws->on('message', function (array $event): void {
-        echo "[WS] {$event['type']}: " . json_encode($event['data'] ?? []) . "\n";
-    });
+    if ($accessToken) {
+        $ws = new WebSocketClient(
+            wsUrl: str_replace('http', 'ws', getenv('BASE_URL') ?: 'https://api.spooled.cloud'),
+            accessToken: $accessToken,
+        );
 
-    // WebSocket-specific subscriptions
-    $ws->subscribeToQueue('my-queue');
-    // $ws->subscribeToJob('job-id');
+        // WebSocket allows bidirectional communication
+        $ws->on('message', function (array $event): void {
+            echo "[WS] {$event['type']}: " . json_encode($event['data'] ?? []) . "\n";
+        });
 
-    // Note: Don't start both SSE and WS - pick one
-    echo "WebSocket client configured (not starting - using SSE for this demo)\n";
+        // WebSocket-specific subscriptions
+        $ws->subscribeToQueue('my-queue');
+        // $ws->subscribeToJob('job-id');
+
+        // Note: Don't start both SSE and WS - pick one
+        echo "WebSocket client configured (not starting - using SSE for this demo)\n";
+    } else {
+        echo "Set ACCESS_TOKEN to configure WebSocket demo (API keys are not accepted by /api/v1/ws)\n";
+    }
 }
 
 // Create a test job to see events

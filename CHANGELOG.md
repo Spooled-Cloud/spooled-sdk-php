@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The high-level worker registration payload now uses the server field names (`queueName`, `hostname`, `maxConcurrency`, configured `workerType`).
 - gRPC unary calls now pass the configured timeout through generated stub call options.
 - Documentation version literals now match `Spooled\Version::VERSION`.
+- Worker `progress()` and `log()` now emit local job logs instead of silently no-oping.
+- The realtime WebSocket example now uses a base WS URL plus JWT access token instead of appending `/api/v1/ws` and passing a raw API key.
 
 ## [1.0.20] - 2026-07-15
 

@@ -134,12 +134,12 @@ final class JobContext
     }
 
     /**
-     * Report progress (placeholder for future implementation).
+     * Log local job progress (0-100).
      */
     public function progress(int $percent, ?string $message = null): void
     {
-        // Progress tracking could be implemented via heartbeat metadata
-        // For now, this is a no-op
+        $boundedPercent = max(0, min(100, $percent));
+        $this->log('info', "Progress {$boundedPercent}%", $message === null ? null : ['message' => $message]);
     }
 
     /**
@@ -147,7 +147,9 @@ final class JobContext
      */
     public function log(string $level, string $message, mixed $context = null): void
     {
-        // Logging through worker context
-        // This could be enhanced to include job metadata
+        $normalizedLevel = in_array($level, ['debug', 'info', 'warn', 'error'], true) ? $level : 'info';
+        $contextText = $context === null ? '' : ' ' . json_encode($context, JSON_UNESCAPED_SLASHES);
+
+        error_log("[spooled.worker.job.{$this->jobId}] [{$normalizedLevel}] {$message}{$contextText}");
     }
 }
