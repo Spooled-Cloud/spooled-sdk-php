@@ -547,6 +547,8 @@ final class GrpcWorkersResource
         $request = new \Spooled\V1\RegisterWorkerRequest();
         $request->setQueueName($params['queueName'] ?? $params['queue'] ?? 'default');
         $request->setHostname($params['hostname'] ?? gethostname());
+        $request->setWorkerType($params['workerType'] ?? $params['worker_type'] ?? 'php');
+        $request->setVersion($params['version'] ?? \Spooled\Version::VERSION);
 
         if (isset($params['concurrency'])) {
             $request->setMaxConcurrency((int) $params['concurrency']);

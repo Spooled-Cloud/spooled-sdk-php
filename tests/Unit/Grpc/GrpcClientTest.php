@@ -9,6 +9,7 @@ use PHPUnit\Framework\TestCase;
 use ReflectionClass;
 use Spooled\Grpc\GrpcOptions;
 use Spooled\Grpc\GrpcQueueResource;
+use Spooled\Grpc\GrpcWorkersResource;
 use Spooled\Grpc\SpooledGrpcClient;
 use Spooled\V1\CompleteRequest;
 use Spooled\V1\CompleteResponse;
@@ -17,6 +18,8 @@ use Spooled\V1\DequeueResponse;
 use Spooled\V1\FailRequest;
 use Spooled\V1\FailResponse;
 use Spooled\V1\Job;
+use Spooled\V1\RegisterWorkerRequest;
+use Spooled\V1\RegisterWorkerResponse;
 use Spooled\V1\RenewLeaseRequest;
 use Spooled\V1\RenewLeaseResponse;
 
@@ -75,6 +78,23 @@ final class RecordingGrpcQueueClient
         $this->requests['renew'] = $request;
         $response = new RenewLeaseResponse();
         $response->setSuccess(true);
+
+        return new ImmediateGrpcCall($response);
+    }
+}
+
+final class RecordingGrpcWorkerClient
+{
+    /** @var array<string, object> */
+    public array $requests = [];
+
+    public function Register(RegisterWorkerRequest $request): ImmediateGrpcCall
+    {
+        $this->requests['register'] = $request;
+        $response = new RegisterWorkerResponse();
+        $response->setWorkerId('worker-123');
+        $response->setLeaseDurationSecs(30);
+        $response->setHeartbeatIntervalSecs(10);
 
         return new ImmediateGrpcCall($response);
     }
@@ -221,5 +241,33 @@ final class GrpcClientTest extends TestCase
         $this->assertSame('worker-1', $transport->requests['renew']->getWorkerId());
         $this->assertSame('lease-current', $transport->requests['renew']->getLeaseId());
         $this->assertSame(60, $transport->requests['renew']->getExtensionSecs());
+    }
+
+    #[RequiresPhpExtension('grpc')]
+    #[RequiresPhpExtension('protobuf')]
+    public function testWorkerRegisterSerializesTypeAndVersion(): void
+    {
+        $transport = new RecordingGrpcWorkerClient();
+        $client = new SpooledGrpcClient(new GrpcOptions(address: 'localhost:50051', secure: false));
+        (new ReflectionClass(SpooledGrpcClient::class))->getProperty('workerClient')->setValue($client, $transport);
+        $workers = new GrpcWorkersResource($client);
+
+        $result = $workers->register([
+            'queueName' => 'emails',
+            'hostname' => 'php-worker-1',
+            'workerType' => 'image-renderer',
+            'version' => '9.9.9',
+            'concurrency' => 4,
+            'metadata' => ['zone' => 'eu'],
+        ]);
+
+        $request = $transport->requests['register'];
+        $this->assertSame('worker-123', $result['workerId']);
+        $this->assertSame('emails', $request->getQueueName());
+        $this->assertSame('php-worker-1', $request->getHostname());
+        $this->assertSame('image-renderer', $request->getWorkerType());
+        $this->assertSame('9.9.9', $request->getVersion());
+        $this->assertSame(4, $request->getMaxConcurrency());
+        $this->assertSame(['zone' => 'eu'], iterator_to_array($request->getMetadata()));
     }
 }

@@ -141,23 +141,65 @@ final readonly class Job
  */
 final readonly class CreateJobParams
 {
+    public string $queue;
+
+    /** @var array<string, mixed> */
+    public array $payload;
+
+    public int $priority;
+
+    public int $maxRetries;
+
+    public ?string $scheduledFor;
+
+    /** @var array<string>|null */
+    public ?array $tags;
+
+    /** @var array<string, mixed>|null */
+    public ?array $metadata;
+
+    public ?string $idempotencyKey;
+
+    /** @var array<string>|null */
+    public ?array $dependencies;
+
+    /** Job timeout in seconds (API `timeoutSeconds`). */
+    public int $timeoutSeconds;
+
+    private bool $hasMaxRetries;
+
+    private bool $hasTimeoutSeconds;
+
+    /**
+     * @param array<string, mixed> $payload
+     * @param array<string>|null $tags
+     * @param array<string, mixed>|null $metadata
+     * @param array<string>|null $dependencies
+     */
     public function __construct(
-        public string $queue,
-        /** @var array<string, mixed> */
-        public array $payload,
-        public int $priority = 0,
-        public int $maxRetries = 3,
-        public ?string $scheduledFor = null,
-        /** @var array<string>|null */
-        public ?array $tags = null,
-        /** @var array<string, mixed>|null */
-        public ?array $metadata = null,
-        public ?string $idempotencyKey = null,
-        /** @var array<string>|null */
-        public ?array $dependencies = null,
-        /** Job timeout in seconds (API `timeoutSeconds`). Trailing for positional BC. */
-        public int $timeoutSeconds = 300,
+        string $queue,
+        array $payload,
+        int $priority = 0,
+        ?int $maxRetries = null,
+        ?string $scheduledFor = null,
+        ?array $tags = null,
+        ?array $metadata = null,
+        ?string $idempotencyKey = null,
+        ?array $dependencies = null,
+        ?int $timeoutSeconds = null,
     ) {
+        $this->queue = $queue;
+        $this->payload = $payload;
+        $this->priority = $priority;
+        $this->maxRetries = $maxRetries ?? 3;
+        $this->scheduledFor = $scheduledFor;
+        $this->tags = $tags;
+        $this->metadata = $metadata;
+        $this->idempotencyKey = $idempotencyKey;
+        $this->dependencies = $dependencies;
+        $this->timeoutSeconds = $timeoutSeconds ?? 300;
+        $this->hasMaxRetries = $maxRetries !== null;
+        $this->hasTimeoutSeconds = $timeoutSeconds !== null;
     }
 
     /**
@@ -167,19 +209,26 @@ final readonly class CreateJobParams
      */
     public function toArray(): array
     {
-        return array_filter([
+        $data = [
             'queue' => $this->queue,
             'payload' => $this->payload,
             'priority' => $this->priority,
-            'maxRetries' => $this->maxRetries,
-            'timeoutSeconds' => $this->timeoutSeconds,
             // API expects scheduledAt; scheduledFor is the SDK alias.
             'scheduledAt' => $this->scheduledFor,
             'tags' => $this->tags,
             'metadata' => $this->metadata,
             'idempotencyKey' => $this->idempotencyKey,
             'dependencies' => $this->dependencies,
-        ], fn ($v) => $v !== null);
+        ];
+
+        if ($this->hasMaxRetries) {
+            $data['maxRetries'] = $this->maxRetries;
+        }
+        if ($this->hasTimeoutSeconds) {
+            $data['timeoutSeconds'] = $this->timeoutSeconds;
+        }
+
+        return array_filter($data, fn ($v) => $v !== null);
     }
 }
 

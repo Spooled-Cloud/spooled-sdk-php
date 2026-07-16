@@ -165,6 +165,7 @@ final class JobTest extends TestCase
             scheduledFor: '2024-12-31T23:59:59Z',
             tags: ['tag1', 'tag2'],
             metadata: ['source' => 'test'],
+            timeoutSeconds: 300,
         );
 
         $array = $params->toArray();
@@ -195,6 +196,24 @@ final class JobTest extends TestCase
         $this->assertArrayNotHasKey('scheduledFor', $array);
         $this->assertArrayNotHasKey('tags', $array);
         $this->assertArrayNotHasKey('metadata', $array);
+        $this->assertArrayNotHasKey('maxRetries', $array);
+        $this->assertArrayNotHasKey('timeoutSeconds', $array);
+    }
+
+    #[Test]
+    public function it_sends_explicit_queue_defaults_from_params(): void
+    {
+        $params = new CreateJobParams(
+            queue: 'test-queue',
+            payload: ['key' => 'value'],
+            maxRetries: 3,
+            timeoutSeconds: 300,
+        );
+
+        $array = $params->toArray();
+
+        $this->assertSame(3, $array['maxRetries']);
+        $this->assertSame(300, $array['timeoutSeconds']);
     }
 
     #[Test]
