@@ -4,3 +4,5 @@
 {"id": "PH-04", "sev": "P3", "summary": "CreateJobParams field drift / unset defaults forced", "path": "src/Types/Job.php", "status": "fixed", "note": "Working tree omits unset retry/timeout values"}
 {"id": "PH-05", "sev": "P3", "summary": "worker progress no-op", "status": "open"}
 {"id": "PH-06", "sev": "P3", "summary": "gRPC worker register omitted workerType/version", "path": "src/Grpc/SpooledGrpcClient.php", "status": "fixed", "note": "Working tree sends workerType and Version::VERSION default"}
+{"id":"PH-07","sev":"P1","summary":"high-level worker registration used stale REST field names","path":"src/Worker/SpooledWorker.php","status":"fixed","note":"Working tree sends queueName, hostname, maxConcurrency, configured workerType"}
+{"id":"PH-08","sev":"P2","summary":"gRPC timeout option was not passed to unary calls","path":"src/Grpc/SpooledGrpcClient.php","status":"fixed","note":"Working tree converts seconds to grpc timeout microseconds for unary calls"}

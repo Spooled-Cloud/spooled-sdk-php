@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `CreateJobParams` now omits unset retry/timeout defaults so backend queue/server policy can apply; explicitly provided values are still sent.
 - gRPC worker registration now sends `workerType` and `version` instead of relying on server/proto defaults.
+- The high-level worker registration payload now uses the server field names (`queueName`, `hostname`, `maxConcurrency`, configured `workerType`).
+- gRPC unary calls now pass the configured timeout through generated stub call options.
 - Documentation version literals now match `Spooled\Version::VERSION`.
 
 ## [1.0.20] - 2026-07-15

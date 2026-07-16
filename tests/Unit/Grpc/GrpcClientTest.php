@@ -41,9 +41,14 @@ final class RecordingGrpcQueueClient
     /** @var array<string, object> */
     public array $requests = [];
 
-    public function Dequeue(DequeueRequest $request): ImmediateGrpcCall
+    /** @var array<string, array<string, mixed>> */
+    public array $options = [];
+
+    /** @param array<string, mixed> $options */
+    public function Dequeue(DequeueRequest $request, array $metadata = [], array $options = []): ImmediateGrpcCall
     {
         $this->requests['dequeue'] = $request;
+        $this->options['dequeue'] = $options;
         $job = new Job();
         $job->setId('job-1');
         $job->setQueueName('emails');
@@ -55,27 +60,33 @@ final class RecordingGrpcQueueClient
         return new ImmediateGrpcCall($response);
     }
 
-    public function Complete(CompleteRequest $request): ImmediateGrpcCall
+    /** @param array<string, mixed> $options */
+    public function Complete(CompleteRequest $request, array $metadata = [], array $options = []): ImmediateGrpcCall
     {
         $this->requests['complete'] = $request;
+        $this->options['complete'] = $options;
         $response = new CompleteResponse();
         $response->setSuccess(true);
 
         return new ImmediateGrpcCall($response);
     }
 
-    public function Fail(FailRequest $request): ImmediateGrpcCall
+    /** @param array<string, mixed> $options */
+    public function Fail(FailRequest $request, array $metadata = [], array $options = []): ImmediateGrpcCall
     {
         $this->requests['fail'] = $request;
+        $this->options['fail'] = $options;
         $response = new FailResponse();
         $response->setSuccess(true);
 
         return new ImmediateGrpcCall($response);
     }
 
-    public function RenewLease(RenewLeaseRequest $request): ImmediateGrpcCall
+    /** @param array<string, mixed> $options */
+    public function RenewLease(RenewLeaseRequest $request, array $metadata = [], array $options = []): ImmediateGrpcCall
     {
         $this->requests['renew'] = $request;
+        $this->options['renew'] = $options;
         $response = new RenewLeaseResponse();
         $response->setSuccess(true);
 
@@ -88,9 +99,14 @@ final class RecordingGrpcWorkerClient
     /** @var array<string, object> */
     public array $requests = [];
 
-    public function Register(RegisterWorkerRequest $request): ImmediateGrpcCall
+    /** @var array<string, array<string, mixed>> */
+    public array $options = [];
+
+    /** @param array<string, mixed> $options */
+    public function Register(RegisterWorkerRequest $request, array $metadata = [], array $options = []): ImmediateGrpcCall
     {
         $this->requests['register'] = $request;
+        $this->options['register'] = $options;
         $response = new RegisterWorkerResponse();
         $response->setWorkerId('worker-123');
         $response->setLeaseDurationSecs(30);
@@ -191,7 +207,7 @@ final class GrpcClientTest extends TestCase
     public function testQueueOperationsSerializeLeaseAndDurationFields(): void
     {
         $transport = new RecordingGrpcQueueClient();
-        $client = new SpooledGrpcClient(new GrpcOptions(address: 'localhost:50051', secure: false));
+        $client = new SpooledGrpcClient(new GrpcOptions(address: 'localhost:50051', secure: false, timeout: 2.5));
         (new ReflectionClass(SpooledGrpcClient::class))->getProperty('queueClient')->setValue($client, $transport);
         $queue = new GrpcQueueResource($client);
 
@@ -241,6 +257,10 @@ final class GrpcClientTest extends TestCase
         $this->assertSame('worker-1', $transport->requests['renew']->getWorkerId());
         $this->assertSame('lease-current', $transport->requests['renew']->getLeaseId());
         $this->assertSame(60, $transport->requests['renew']->getExtensionSecs());
+        $this->assertSame(2_500_000, $transport->options['dequeue']['timeout']);
+        $this->assertSame(2_500_000, $transport->options['complete']['timeout']);
+        $this->assertSame(2_500_000, $transport->options['fail']['timeout']);
+        $this->assertSame(2_500_000, $transport->options['renew']['timeout']);
     }
 
     #[RequiresPhpExtension('grpc')]
@@ -248,7 +268,7 @@ final class GrpcClientTest extends TestCase
     public function testWorkerRegisterSerializesTypeAndVersion(): void
     {
         $transport = new RecordingGrpcWorkerClient();
-        $client = new SpooledGrpcClient(new GrpcOptions(address: 'localhost:50051', secure: false));
+        $client = new SpooledGrpcClient(new GrpcOptions(address: 'localhost:50051', secure: false, timeout: 1.0));
         (new ReflectionClass(SpooledGrpcClient::class))->getProperty('workerClient')->setValue($client, $transport);
         $workers = new GrpcWorkersResource($client);
 
@@ -269,5 +289,6 @@ final class GrpcClientTest extends TestCase
         $this->assertSame('9.9.9', $request->getVersion());
         $this->assertSame(4, $request->getMaxConcurrency());
         $this->assertSame(['zone' => 'eu'], iterator_to_array($request->getMetadata()));
+        $this->assertSame(1_000_000, $transport->options['register']['timeout']);
     }
 }

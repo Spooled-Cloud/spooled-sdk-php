@@ -266,10 +266,10 @@ class SpooledWorker
         try {
             // Register with the API
             $registration = $this->client->workers->register([
-                'queues' => [$this->config->queueName],
-                'name' => $this->config->hostname ?? gethostname() ?: 'php-worker',
-                'concurrency' => $this->config->concurrency,
-                'workerType' => 'php',
+                'queueName' => $this->config->queueName,
+                'hostname' => $this->config->hostname ?? gethostname() ?: 'php-worker',
+                'maxConcurrency' => $this->config->concurrency,
+                'workerType' => $this->config->workerType,
                 'version' => $this->config->version ?? Version::VERSION,
                 'metadata' => $this->config->metadata ?? [],
             ]);

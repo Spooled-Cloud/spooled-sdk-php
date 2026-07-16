@@ -169,6 +169,20 @@ final class SpooledGrpcClient
     }
 
     /**
+     * Get unary call options.
+     *
+     * @return array<string, int>
+     */
+    public function getCallOptions(): array
+    {
+        if ($this->options->timeout === null) {
+            return [];
+        }
+
+        return ['timeout' => max(1, (int) round($this->options->timeout * 1_000_000))];
+    }
+
+    /**
      * Close the gRPC connection.
      */
     public function close(): void
@@ -248,7 +262,7 @@ final class GrpcQueueResource
             $request->setScheduledAt($timestamp);
         }
 
-        [$response, $status] = $client->Enqueue($request, $metadata)->wait();
+        [$response, $status] = $client->Enqueue($request, $metadata, $this->client->getCallOptions())->wait();
 
         if ($status->code !== \Grpc\STATUS_OK) {
             throw new RuntimeException("gRPC error: {$status->details}", $status->code);
@@ -287,7 +301,7 @@ final class GrpcQueueResource
             $request->setBatchSize((int) $params['batchSize']);
         }
 
-        [$response, $status] = $client->Dequeue($request, $metadata)->wait();
+        [$response, $status] = $client->Dequeue($request, $metadata, $this->client->getCallOptions())->wait();
 
         if ($status->code !== \Grpc\STATUS_OK) {
             if ($status->code === \Grpc\STATUS_NOT_FOUND) {
@@ -337,7 +351,7 @@ final class GrpcQueueResource
         $request = new \Spooled\V1\GetJobRequest();
         $request->setJobId($jobId);
 
-        [$response, $status] = $client->GetJob($request, $metadata)->wait();
+        [$response, $status] = $client->GetJob($request, $metadata, $this->client->getCallOptions())->wait();
 
         // Return null job for NOT_FOUND (matches Node.js SDK behavior)
         if ($status->code === \Grpc\STATUS_NOT_FOUND) {
@@ -403,7 +417,7 @@ final class GrpcQueueResource
             $request->setLeaseId((string) $params['leaseId']);
         }
 
-        [$response, $status] = $client->Complete($request, $metadata)->wait();
+        [$response, $status] = $client->Complete($request, $metadata, $this->client->getCallOptions())->wait();
 
         if ($status->code !== \Grpc\STATUS_OK) {
             throw new RuntimeException("gRPC error: {$status->details}", $status->code);
@@ -443,7 +457,7 @@ final class GrpcQueueResource
             $request->setLeaseId((string) $params['leaseId']);
         }
 
-        [$response, $status] = $client->Fail($request, $metadata)->wait();
+        [$response, $status] = $client->Fail($request, $metadata, $this->client->getCallOptions())->wait();
 
         if ($status->code !== \Grpc\STATUS_OK) {
             throw new RuntimeException("gRPC error: {$status->details}", $status->code);
@@ -469,7 +483,7 @@ final class GrpcQueueResource
         $request = new \Spooled\V1\GetQueueStatsRequest();
         $request->setQueueName($params['queueName'] ?? $params['queue'] ?? 'default');
 
-        [$response, $status] = $client->GetQueueStats($request, $metadata)->wait();
+        [$response, $status] = $client->GetQueueStats($request, $metadata, $this->client->getCallOptions())->wait();
 
         if ($status->code !== \Grpc\STATUS_OK) {
             throw new RuntimeException("gRPC error: {$status->details}", $status->code);
@@ -510,7 +524,7 @@ final class GrpcQueueResource
             $request->setLeaseId((string) $params['leaseId']);
         }
 
-        [$response, $status] = $client->RenewLease($request, $metadata)->wait();
+        [$response, $status] = $client->RenewLease($request, $metadata, $this->client->getCallOptions())->wait();
 
         if ($status->code !== \Grpc\STATUS_OK) {
             throw new RuntimeException("gRPC error: {$status->details}", $status->code);
@@ -563,7 +577,7 @@ final class GrpcWorkersResource
             $request->setMetadata($metadataArray);
         }
 
-        [$response, $status] = $client->Register($request, $metadata)->wait();
+        [$response, $status] = $client->Register($request, $metadata, $this->client->getCallOptions())->wait();
 
         if ($status->code !== \Grpc\STATUS_OK) {
             throw new RuntimeException("gRPC error: {$status->details}", $status->code);
@@ -598,7 +612,7 @@ final class GrpcWorkersResource
             $request->setStatus((string) $params['status']);
         }
 
-        [$response, $status] = $client->Heartbeat($request, $metadata)->wait();
+        [$response, $status] = $client->Heartbeat($request, $metadata, $this->client->getCallOptions())->wait();
 
         if ($status->code !== \Grpc\STATUS_OK) {
             throw new RuntimeException("gRPC error: {$status->details}", $status->code);
@@ -624,7 +638,7 @@ final class GrpcWorkersResource
         $request = new \Spooled\V1\DeregisterRequest();
         $request->setWorkerId($params['workerId']);
 
-        [$response, $status] = $client->Deregister($request, $metadata)->wait();
+        [$response, $status] = $client->Deregister($request, $metadata, $this->client->getCallOptions())->wait();
 
         if ($status->code !== \Grpc\STATUS_OK) {
             throw new RuntimeException("gRPC error: {$status->details}", $status->code);
