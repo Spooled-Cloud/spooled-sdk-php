@@ -50,13 +50,13 @@ final class WorkersResource extends BaseResource
     /**
      * Send heartbeat for a worker.
      *
+     * Backend returns an empty 200 body; there is no worker payload to decode.
+     *
      * @param array<string, mixed> $params Optional stats to include
      */
-    public function heartbeat(string $workerId, array $params = []): Worker
+    public function heartbeat(string $workerId, array $params = []): void
     {
-        $response = $this->httpClient->post("workers/{$workerId}/heartbeat", $params);
-
-        return Worker::fromArray($response);
+        $this->httpClient->post("workers/{$workerId}/heartbeat", $params);
     }
 
     /**
@@ -65,17 +65,5 @@ final class WorkersResource extends BaseResource
     public function deregister(string $workerId): void
     {
         $this->httpClient->post("workers/{$workerId}/deregister");
-    }
-
-    /**
-     * Update worker status.
-     *
-     * @param array<string, mixed> $params
-     */
-    public function update(string $workerId, array $params): Worker
-    {
-        $response = $this->httpClient->put("workers/{$workerId}", $params);
-
-        return Worker::fromArray($response);
     }
 }

@@ -153,14 +153,15 @@ final class BareArrayListTest extends TestCase
     public function worker_list_parses_bare_top_level_array(): void
     {
         $data = [
-            ['id' => 'wrk-1', 'name' => 'worker-a'],
-            ['id' => 'wrk-2', 'name' => 'worker-b'],
+            ['id' => 'wrk-1', 'hostname' => 'worker-a', 'queueName' => 'q1'],
+            ['id' => 'wrk-2', 'hostname' => 'worker-b', 'queueName' => 'q2'],
         ];
 
         $list = WorkerList::fromArray($data);
 
         $this->assertCount(2, $list->workers);
         $this->assertSame('wrk-1', $list->workers[0]->id);
+        $this->assertSame('worker-a', $list->workers[0]->hostname);
         $this->assertSame(2, $list->total);
     }
 
@@ -168,7 +169,7 @@ final class BareArrayListTest extends TestCase
     public function worker_list_parses_wrapped_object(): void
     {
         $data = [
-            'workers' => [['id' => 'wrk-1', 'name' => 'worker-a']],
+            'workers' => [['id' => 'wrk-1', 'hostname' => 'worker-a', 'queueName' => 'q1']],
             'total' => 5,
         ];
 

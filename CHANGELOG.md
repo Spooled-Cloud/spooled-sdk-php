@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `Worker` / `WorkerList` now map the public REST worker fields (`queueName`, `queueNames`, `maxConcurrency`, `currentJobs`, `registeredAt`, `updatedAt`); `workers->heartbeat()` returns void (empty 200 body).
 - `CreateJobParams` now omits unset retry/timeout defaults so backend queue/server policy can apply; explicitly provided values are still sent.
 - gRPC worker registration now sends `workerType` and `version` instead of relying on server/proto defaults.
 - The high-level worker registration payload now uses the server field names (`queueName`, `hostname`, `maxConcurrency`, configured `workerType`).

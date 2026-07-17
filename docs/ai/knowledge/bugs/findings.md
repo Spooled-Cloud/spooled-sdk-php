@@ -11,3 +11,4 @@
 | PH-07 | P1 | ~~High-level worker registration used stale REST field names~~ **FIXED working tree** | `src/Worker/SpooledWorker.php` |
 | PH-08 | P2 | ~~gRPC timeout option was not passed to unary calls~~ **FIXED working tree** | `src/Grpc/SpooledGrpcClient.php` |
 | PH-09 | P2 | ~~Realtime WebSocket example built wrong URL and used raw API key~~ **FIXED working tree** | `examples/realtime-example.php` |
+| PS-W1 | P2 | ~~Worker type drift from REST~~ **FIXED working tree** | `src/Types/Worker.php` |

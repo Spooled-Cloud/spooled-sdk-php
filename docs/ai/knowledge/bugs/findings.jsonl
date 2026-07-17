@@ -7,3 +7,4 @@
 {"id":"PH-07","sev":"P1","summary":"high-level worker registration used stale REST field names","path":"src/Worker/SpooledWorker.php","status":"fixed","note":"Working tree sends queueName, hostname, maxConcurrency, configured workerType"}
 {"id":"PH-08","sev":"P2","summary":"gRPC timeout option was not passed to unary calls","path":"src/Grpc/SpooledGrpcClient.php","status":"fixed","note":"Working tree converts seconds to grpc timeout microseconds for unary calls"}
 {"id":"PH-09","sev":"P2","summary":"realtime WebSocket example built wrong URL and used raw API key","path":"examples/realtime-example.php","status":"fixed","note":"Working tree uses base WS URL and ACCESS_TOKEN JWT"}
+{"id":"PS-W1","sev":"P2","summary":"PHP Worker type drifted from REST worker JSON","path":"src/Types/Worker.php","status":"fixed","note":"Maps public REST fields; heartbeat is void"}
