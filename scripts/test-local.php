@@ -637,7 +637,7 @@ function testWorkers(SpooledClient $client, TestHarness $harness, string $testPr
     $harness->runTest('POST /api/v1/workers/{id}/heartbeat', function () use ($client, &$workerId): void {
         $client->workers->heartbeat($workerId, [
             'currentJobs' => 0,
-            'status' => 'active',
+            'status' => 'healthy',
         ]);
         $worker = $client->workers->get($workerId);
         assertDefined($worker->lastHeartbeat ?? null, 'heartbeat should be updated');

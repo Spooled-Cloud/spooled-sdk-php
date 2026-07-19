@@ -414,12 +414,10 @@ $worker = $client->workers->get('worker_id');
 
 ```php
 $registration = $client->workers->register([
-    'queues' => ['my-queue'],
-    'name' => gethostname() ?: 'php-worker',
-    'concurrency' => 10,
-    'workerType' => 'php',
-    'version' => \Spooled\Version::VERSION,
-    'metadata' => ['appVersion' => 'your-app-version'],
+    'queueName' => 'my-queue',                     // required
+    'hostname' => gethostname() ?: 'php-worker',   // required
+    'maxConcurrency' => 10,                        // optional, default 5
+    'workerType' => 'php',                         // optional
 ]);
 // $registration->id
 // $registration->heartbeatIntervalSecs
