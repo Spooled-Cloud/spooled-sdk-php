@@ -1,10 +1,10 @@
 {"id": "PH-01", "sev": "P2", "summary": "gRPC enqueue no timeoutSeconds", "path": "src/Grpc/SpooledGrpcClient.php", "status": "fixed"}
 {"id": "PH-02", "sev": "P2", "summary": "default grpc localhost:50051", "path": "src/Grpc/GrpcOptions.php", "status": "fixed"}
 {"id": "PH-03", "sev": "P3", "summary": "no stream wrappers", "status": "open"}
-{"id": "PH-04", "sev": "P3", "summary": "CreateJobParams field drift / unset defaults forced", "path": "src/Types/Job.php", "status": "fixed", "note": "Working tree omits unset retry/timeout values"}
-{"id": "PH-05", "sev": "P3", "summary": "worker progress/log no-op", "path": "src/Worker/JobContext.php", "status": "fixed", "note": "Working tree logs progress/log locally; backend progress persistence still Go-only"}
-{"id": "PH-06", "sev": "P3", "summary": "gRPC worker register omitted workerType/version", "path": "src/Grpc/SpooledGrpcClient.php", "status": "fixed", "note": "Working tree sends workerType and Version::VERSION default"}
-{"id":"PH-07","sev":"P1","summary":"high-level worker registration used stale REST field names","path":"src/Worker/SpooledWorker.php","status":"fixed","note":"Working tree sends queueName, hostname, maxConcurrency, configured workerType"}
-{"id":"PH-08","sev":"P2","summary":"gRPC timeout option was not passed to unary calls","path":"src/Grpc/SpooledGrpcClient.php","status":"fixed","note":"Working tree converts seconds to grpc timeout microseconds for unary calls"}
-{"id":"PH-09","sev":"P2","summary":"realtime WebSocket example built wrong URL and used raw API key","path":"examples/realtime-example.php","status":"fixed","note":"Working tree uses base WS URL and ACCESS_TOKEN JWT"}
-{"id":"PS-W1","sev":"P2","summary":"PHP Worker type drifted from REST worker JSON","path":"src/Types/Worker.php","status":"fixed","note":"Maps public REST fields; heartbeat is void"}
+{"id": "PH-04", "sev": "P3", "summary": "CreateJobParams field drift / unset defaults forced", "path": "src/Types/Job.php", "status": "fixed", "note": "1.0.21 omits unset retry/timeout values"}
+{"id": "PH-05", "sev": "P3", "summary": "worker progress/log no-op", "path": "src/Worker/JobContext.php", "status": "fixed", "note": "1.0.21 logs progress/log locally; backend progress persistence still Go-only"}
+{"id": "PH-06", "sev": "P3", "summary": "gRPC worker register omitted workerType/version", "path": "src/Grpc/SpooledGrpcClient.php", "status": "fixed", "note": "1.0.21 sends workerType and Version::VERSION default"}
+{"id":"PH-07","sev":"P1","summary":"high-level worker registration used stale REST field names","path":"src/Worker/SpooledWorker.php","status":"fixed","note":"1.0.21 sends queueName, hostname, maxConcurrency, configured workerType"}
+{"id":"PH-08","sev":"P2","summary":"gRPC timeout option was not passed to unary calls","path":"src/Grpc/SpooledGrpcClient.php","status":"fixed","note":"1.0.21 converts seconds to grpc timeout microseconds for unary calls"}
+{"id":"PH-09","sev":"P2","summary":"realtime WebSocket example built wrong URL and used raw API key","path":"examples/realtime-example.php","status":"fixed","note":"1.0.21 uses base WS URL and ACCESS_TOKEN JWT"}
+{"id":"PS-W1","sev":"P2","summary":"PHP Worker type drifted from REST worker JSON","path":"src/Types/Worker.php","status":"fixed","note":"Fixed in 1.0.21: maps public REST fields; heartbeat is void"}

@@ -27,7 +27,7 @@ final class WorkerTest extends TestCase
             'status' => 'healthy',
             'lastHeartbeat' => '2026-07-15T12:00:00Z',
             'metadata' => ['region' => 'eu'],
-            'version' => '1.0.20',
+            'version' => '1.0.21',
             'registeredAt' => '2026-07-01T00:00:00Z',
             'updatedAt' => '2026-07-15T12:00:00Z',
         ]);
@@ -43,7 +43,7 @@ final class WorkerTest extends TestCase
         $this->assertSame('healthy', $worker->status);
         $this->assertSame('2026-07-15T12:00:00Z', $worker->lastHeartbeat);
         $this->assertSame(['region' => 'eu'], $worker->metadata);
-        $this->assertSame('1.0.20', $worker->version);
+        $this->assertSame('1.0.21', $worker->version);
         $this->assertSame('2026-07-01T00:00:00Z', $worker->registeredAt);
         $this->assertSame('2026-07-15T12:00:00Z', $worker->updatedAt);
     }
