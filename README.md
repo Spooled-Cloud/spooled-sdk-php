@@ -745,7 +745,7 @@ try {
 
 ## Version Source
 
-Release `1.0.21` is defined once in `Spooled\Version::VERSION`. The default HTTP `User-Agent` and default `SpooledWorker` registration version derive from that constant. Application metadata may override the worker version explicitly.
+Release `1.1.0` is defined once in `Spooled\Version::VERSION`. The default HTTP `User-Agent` and default `SpooledWorker` registration version derive from that constant. Application metadata may override the worker version explicitly.
 
 ## Development
 
