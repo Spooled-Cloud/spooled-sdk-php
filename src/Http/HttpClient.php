@@ -151,6 +151,11 @@ class HttpClient
     /**
      * Make a raw request and return the response body as string.
      *
+     * Credentials travel in the `Authorization` header only. The API rejects
+     * credentials passed as query parameters, and a query string is recorded by
+     * proxy and CDN access logs, tracing spans, browser history and the
+     * `Referer` header, so no credential is ever appended to the URL.
+     *
      * @param array<string, string> $headers
      */
     public function getRaw(
@@ -160,18 +165,13 @@ class HttpClient
     ): string {
         $url = $this->buildUrl($path, $skipApiPrefix);
         $allHeaders = $this->buildHeaders($headers);
-        $query = $this->addApiKeyToQuery([]);
 
-        return $this->circuitBreaker->execute(function () use ($url, $allHeaders, $query): string {
-            return $this->retryHandler->execute(function () use ($url, $allHeaders, $query): string {
+        return $this->circuitBreaker->execute(function () use ($url, $allHeaders): string {
+            return $this->retryHandler->execute(function () use ($url, $allHeaders): string {
                 try {
                     $options = [
                         RequestOptions::HEADERS => $allHeaders,
                     ];
-
-                    if ($query !== []) {
-                        $options[RequestOptions::QUERY] = $query;
-                    }
 
                     $response = $this->guzzle->request('GET', $url, $options);
 
@@ -454,26 +454,6 @@ class HttpClient
                 }
             }, 'POST', true);
         });
-    }
-
-    /**
-     * Add API key to query parameters if using API key auth.
-     *
-     * @param array<string, mixed> $query
-     * @return array<string, mixed>
-     */
-    private function addApiKeyToQuery(array $query): array
-    {
-        // Add api_key query parameter if not using JWT
-        if (
-            ($this->accessToken === null || $this->accessToken === '')
-            && $this->options->apiKey !== null
-            && $this->options->apiKey !== ''
-        ) {
-            $query['api_key'] = $this->options->apiKey;
-        }
-
-        return $query;
     }
 
     /**

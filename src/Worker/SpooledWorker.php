@@ -265,14 +265,23 @@ class SpooledWorker
 
         try {
             // Register with the API
-            $registration = $this->client->workers->register([
+            $registrationParams = [
                 'queueName' => $this->config->queueName,
                 'hostname' => $this->config->hostname ?? gethostname() ?: 'php-worker',
                 'maxConcurrency' => $this->config->concurrency,
                 'workerType' => $this->config->workerType,
                 'version' => $this->config->version ?? Version::VERSION,
                 'metadata' => $this->config->metadata ?? [],
-            ]);
+            ];
+
+            // A configured worker ID makes registration an upsert, so a restart
+            // reuses this worker's row instead of leaving the old one occupying
+            // a plan worker-cap slot until the stale-worker reaper clears it.
+            if ($this->config->workerId !== null && $this->config->workerId !== '') {
+                $registrationParams['workerId'] = $this->config->workerId;
+            }
+
+            $registration = $this->client->workers->register($registrationParams);
 
             $this->workerId = $registration->id;
             $this->debug("Worker registered: {$this->workerId}");

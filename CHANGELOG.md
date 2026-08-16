@@ -5,6 +5,32 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Tracks Spooled backend 0.1.111.
+
+**Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
+
+### Removed
+
+- The `api_key` query parameter is no longer appended to `GET /metrics`. Credentials travel in the `Authorization` header only, which is what that request already used; the API now rejects query-string credentials on REST, and a query string reaches proxy and CDN access logs, tracing spans, browser history and the `Referer` header (CWE-598). `MetricsResource` is unaffected.
+
+### Added
+
+- `Webhook::$lastStatus` (`success`, `failed`, or `auto_disabled`), so an auto-disabled webhook can be told apart from one disabled deliberately.
+- `WorkerConfig::$workerId` and an optional `workerId` key on `workers->register()`: a stable id (1-128 chars, `[A-Za-z0-9._-]`) makes registration an upsert, so a restarting worker reuses its row instead of leaving the old one against the plan worker cap until the stale-worker reaper clears it. `SpooledWorker` forwards it when configured. An id owned by another organization returns 409.
+
+### Changed
+
+- `webhooks->enable()` / `webhooks->disable()` now issue `PUT /outgoing-webhooks/{id}` with `{"enabled": …}`, the supported route; the `/enable` and `/disable` paths they previously posted to do not exist. `enable()` is the recovery path after a webhook is auto-disabled following 20 consecutive failed deliveries, and is charged against the plan webhook cap, so it can raise `RateLimitError` with `errorCode` `"QUOTA_EXCEEDED"`.
+- `Webhook::$lastDeliveryAt` now reads the `last_triggered_at` field the API actually returns.
+
+### Documentation
+
+- `webhooks->update()`: `secret` is three-state - omit to keep, `null` to clear (deliveries go out unsigned, with no `X-Spooled-Signature`), a string to replace. Params arrays built with null defaults now wipe the secret.
+- Webhook delivery history is retained for the plan's window (free 1 day, starter 7, pro 30, enterprise 90) rather than kept forever, and a swept delivery can no longer be retried.
+- `ApiKey::$lastUsedAt` is written at most once per key per five minutes, so it can be up to five minutes stale.
+
 ## [1.0.21] - 2026-07-19
 
 **Breaking:** although shipped as a patch per this SDK's release precedent, this release changes the public worker API: `Worker` / `WorkerList` properties are renamed to the REST field names (`queueName`, `queueNames`, `maxConcurrency`, `currentJobs`, `registeredAt`, `updatedAt` replace `name`, `queues`, `concurrency`, `activeJobs`, `completedJobs`, `failedJobs`, `pid`, `createdAt`), `workers->heartbeat()` now returns `void` (was `Worker`), and `workers->update()` is removed (no matching backend endpoint).

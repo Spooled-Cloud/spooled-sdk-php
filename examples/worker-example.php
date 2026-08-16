@@ -25,6 +25,9 @@ $worker = new SpooledWorker($client, new WorkerConfig(
     concurrency: 3,
     pollInterval: 1000,  // 1 second (ms)
     heartbeatInterval: 30000,  // 30 seconds (ms)
+    // Stable id: restarts upsert this worker's row instead of leaving the old
+    // one against the plan worker cap until the stale-worker reaper clears it.
+    workerId: getenv('SPOOLED_WORKER_ID') ?: 'example-worker-01',
 ));
 
 // Register event handlers

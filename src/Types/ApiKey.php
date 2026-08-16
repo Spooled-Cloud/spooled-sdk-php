@@ -19,6 +19,14 @@ final readonly class ApiKey
         /** @var array<string>|null */
         public ?array $scopes,
         public ?string $expiresAt,
+        /**
+         * Coarse: the API writes this at most once per key per five minutes, not
+         * once per request, so it can be up to five minutes behind. It answers
+         * "has this key been used lately", not "did that request just happen" -
+         * do not use it to confirm an individual call, and give key-rotation
+         * tooling a margin wider than the write interval before treating a key
+         * as unused.
+         */
         public ?string $lastUsedAt,
         public ?string $createdAt,
         public ?string $updatedAt,

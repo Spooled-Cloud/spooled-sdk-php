@@ -27,6 +27,20 @@ final class WorkersResource extends BaseResource
     /**
      * Register a new worker.
      *
+     * Accepted keys: `queueName`, `hostname`, `maxConcurrency`, `workerType`,
+     * `version`, `metadata`, and the optional `workerId`.
+     *
+     * `workerId` is 1-128 characters from `[A-Za-z0-9._-]`. Supplying a stable
+     * value (a hostname or an ordinal, never a PID or a fresh UUID) makes
+     * registration an upsert, so a restarting worker reuses the row it already
+     * owns; re-registering an id you own is not charged against the plan worker
+     * cap. Omit it and the server mints a UUID instead, which means every
+     * restart leaves the previous row holding a worker-cap slot until the
+     * stale-worker reaper clears it about two minutes later - enough for a
+     * crash-looping worker on a tight plan to quota itself out of registering.
+     * An id owned by a different organization is rejected with HTTP 409
+     * (`Spooled\Errors\ConflictError`).
+     *
      * @param array<string, mixed> $params
      * @return Worker Worker with heartbeatIntervalSecs field
      */

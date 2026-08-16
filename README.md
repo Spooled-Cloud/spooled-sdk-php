@@ -181,6 +181,10 @@ $client = new SpooledClient(
 $worker = new SpooledWorker($client, [
     'queueName' => 'my-queue',
     'concurrency' => 10,
+    // Optional, but recommended: a stable id (1-128 chars, [A-Za-z0-9._-])
+    // makes registration an upsert, so restarts reuse this worker's row
+    // instead of leaving the old one against the plan worker cap.
+    'workerId' => 'my-queue-worker-01',
 ]);
 
 $worker->process(function (JobContext $ctx): array {
@@ -368,12 +372,13 @@ $webhook = $client->webhooks->create([
     'name' => 'My Webhook',
     'url' => 'https://your-app.com/webhooks/spooled',
     'events' => ['job.completed', 'job.failed'],
+    'secret' => 'hmac-secret',
 ]);
 
 // Test webhook
 $client->webhooks->test($webhook->id);
 
-// Get delivery history
+// Get delivery history (retained for the plan's window, see below)
 $deliveries = $client->webhooks->getDeliveries($webhook->id);
 
 // Retry a failed delivery
@@ -382,6 +387,37 @@ $client->webhooks->retryDelivery($webhook->id, $deliveryId);
 // Delete webhook
 $client->webhooks->delete($webhook->id);
 ```
+
+On update, `secret` is three-state. Omit the key to keep the current secret,
+pass a string to replace it, and pass `null` to **clear** it. Clearing means
+deliveries go out unsigned, with no `X-Spooled-Signature` header, and a receiver
+that verifies signatures will reject every one of them. Send only the keys you
+mean to change; serialising a whole webhook back with null defaults now wipes
+the secret.
+
+```php
+$client->webhooks->update($webhook->id, ['secret' => null]); // stops signing
+```
+
+After 20 consecutive failed deliveries a webhook is disabled automatically:
+`enabled` becomes `false` and `lastStatus` becomes `"auto_disabled"`, and it
+receives no events until it is enabled again. `failureCount` counts consecutive
+failed deliveries rather than individual retry attempts, and any success resets
+it to 0.
+
+```php
+if ($webhook->lastStatus === 'auto_disabled') {
+    // Fix the endpoint first. Re-enabling is charged against the plan webhook
+    // cap, so this can throw RateLimitError with errorCode "QUOTA_EXCEEDED".
+    $client->webhooks->enable($webhook->id);
+}
+```
+
+Delivery history is retained, not permanent: rows are removed once past the
+plan's history retention window (free 1 day, starter 7, pro 30, enterprise 90),
+and only the newest 100 deliveries per webhook are readable. Copy anything you
+need to keep into your own store; once a row is swept it can no longer be
+retried.
 
 ### Dead Letter Queue (DLQ)
 
@@ -433,6 +469,12 @@ $client->apiKeys->update($keyId, ['name' => 'Updated Name']);
 // Revoke a key
 $client->apiKeys->delete($keyId);
 ```
+
+`$key->lastUsedAt` is coarse. The API writes it at most once per key per five
+minutes, not once per request, so it can be up to five minutes behind. Use it to
+answer "has this key been used lately", not "did that request just happen", and
+give rotation tooling a margin wider than the write interval before treating a
+key as unused.
 
 ### Billing & Subscriptions
 

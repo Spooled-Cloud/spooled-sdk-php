@@ -51,6 +51,18 @@ final readonly class WorkerConfig
         public ?array $metadata = null,
         /** Auto-start worker after construction */
         public bool $autoStart = false,
+        /**
+         * Stable worker identity, 1-128 characters from `[A-Za-z0-9._-]`.
+         *
+         * Set it and registration becomes an upsert: a restarting process
+         * reuses the row it already owns instead of leaving the old one holding
+         * a plan worker-cap slot until the stale-worker reaper clears it about
+         * two minutes later. Use a value that survives restarts - a hostname,
+         * a Supervisor process number, a StatefulSet ordinal - never a PID or a
+         * freshly generated UUID. Leave it null to keep the server-minted UUID
+         * behaviour.
+         */
+        public ?string $workerId = null,
     ) {
         if ($this->leaseDuration <= 0) {
             throw new InvalidArgumentException('leaseDuration must be greater than zero.');
@@ -80,6 +92,7 @@ final readonly class WorkerConfig
             version: isset($options['version']) ? (string) $options['version'] : null,
             metadata: isset($options['metadata']) && is_array($options['metadata']) ? $options['metadata'] : null,
             autoStart: (bool) ($options['autoStart'] ?? false),
+            workerId: isset($options['workerId']) ? (string) $options['workerId'] : null,
         );
     }
 }

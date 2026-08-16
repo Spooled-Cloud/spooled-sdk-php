@@ -210,7 +210,9 @@ final class WebSocketClient
                     $this->handleMessage((string) $msg);
                 });
 
-                $conn->on('close', function (int $code = null, string $reason = null): void {
+                // Explicitly nullable: an implicit nullable via `= null` is
+                // deprecated in PHP 8.4 and would become an error later.
+                $conn->on('close', function (?int $code = null, ?string $reason = null): void {
                     $this->connection = null;
                     $this->emit('disconnected', ['code' => $code, 'reason' => $reason]);
 

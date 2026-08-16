@@ -375,6 +375,40 @@ $client->webhooks->update('webhook_id', ['enabled' => false]);
 $client->webhooks->delete('webhook_id');
 ```
 
+`secret` is three-state on update, and null is destructive:
+
+```php
+// Omit the key: the current signing secret is kept.
+$client->webhooks->update('webhook_id', ['url' => 'https://new-host/hook']);
+
+// Explicit null: the secret is CLEARED. Deliveries then go out unsigned, with
+// no X-Spooled-Signature header, and a receiver that verifies signatures will
+// reject every one of them.
+$client->webhooks->update('webhook_id', ['secret' => null]);
+
+// A string replaces the secret.
+$client->webhooks->update('webhook_id', ['secret' => 'new-hmac-secret']);
+```
+
+Build the params array from only the keys you mean to change. Serialising a whole webhook back, or assembling params from a form or config where an unset field becomes null, now wipes the secret.
+
+### Auto-Disable and Recovery
+
+After 20 consecutive failed deliveries the webhook is disabled automatically: `enabled` becomes `false` and `lastStatus` becomes `"auto_disabled"`. It receives no events until it is enabled again.
+
+```php
+$wh = $client->webhooks->get('webhook_id');
+
+if ($wh->lastStatus === 'auto_disabled') {
+    // Fix the endpoint first, then re-enable.
+    $client->webhooks->enable('webhook_id');   // PUT with ['enabled' => true]
+}
+```
+
+Re-enabling is charged against the plan webhook cap, so it can fail with `HTTP 429` (`RateLimitError`) and `errorCode` `"QUOTA_EXCEEDED"`.
+
+`$wh->failureCount` counts consecutive failed *deliveries*, not individual retry attempts, so the same amount of breakage shows a number roughly 5x smaller than a per-attempt count. Any successful delivery resets it to 0, including a successful manual retry.
+
 ### Test Webhook
 
 ```php
@@ -388,11 +422,15 @@ echo "Success: " . ($result->success ? 'yes' : 'no') . "\n";
 $deliveries = $client->webhooks->getDeliveries('webhook_id', ['limit' => 50]);
 ```
 
+Delivery history is retained, not permanent. Rows are removed once they pass the plan's history retention window - free 1 day, starter 7 days, pro 30 days, enterprise 90 days - and only the newest 100 deliveries per webhook are readable. Copy anything you need to keep into your own store.
+
 ### Retry Delivery
 
 ```php
 $result = $client->webhooks->retryDelivery('webhook_id', 'delivery_id');
 ```
+
+The delivery must still be inside the retention window; once its row is swept there is nothing left to retry.
 
 ---
 
@@ -418,10 +456,17 @@ $registration = $client->workers->register([
     'hostname' => gethostname() ?: 'php-worker',   // required
     'maxConcurrency' => 10,                        // optional, default 5
     'workerType' => 'php',                         // optional
+    'workerId' => 'billing-worker-01',             // optional, 1-128 chars [A-Za-z0-9._-]
 ]);
 // $registration->id
 // $registration->heartbeatIntervalSecs
 ```
+
+A stable `workerId` makes registration an upsert, so a restarting process reuses the row it already owns, and re-registering an id you own is not charged against the plan worker cap. Use something that survives restarts (a hostname, a process number, a StatefulSet ordinal) - never a PID or a fresh UUID.
+
+Omit `workerId` and the server mints a UUID instead, as before. Each restart then leaves the previous row holding a worker-cap slot until the stale-worker reaper clears it about two minutes later, which is enough for a crash-looping worker on a tight plan to quota itself out of registering.
+
+An id owned by a different organization is rejected with `HTTP 409` (`ConflictError`).
 
 ### Heartbeat
 
@@ -448,6 +493,8 @@ $client->workers->deregister('worker_id');
 $keys = $client->apiKeys->list();
 // Keys are masked (only last 4 chars shown)
 ```
+
+`$key->lastUsedAt` is coarse: the API writes it at most once per key per five minutes, not once per request, so it can be up to five minutes behind. It answers "has this key been used lately", not "did that request just happen" - rotation tooling should allow a margin wider than the write interval before treating a key as unused.
 
 ### Create Key
 

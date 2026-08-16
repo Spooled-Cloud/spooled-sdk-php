@@ -27,13 +27,31 @@ final readonly class Webhook
         /** @var array<string> */
         public array $events,
         public ?string $organizationId,
+        /**
+         * Always null: the API never returns the signing secret, on any endpoint.
+         * Null here therefore says nothing about whether deliveries are signed.
+         * To answer that, track what you last sent to `webhooks->update()`.
+         */
         public ?string $secret,
         public int $maxRetries,
         public ?int $timeout,
         /** @var array<string, string>|null */
         public ?array $headers,
         public int $deliveryCount,
-        public int $failedCount,
+        /**
+         * Consecutive failed deliveries. Counted once per delivery, not once per
+         * retry attempt, so the same amount of breakage produces a number roughly
+         * 5x smaller than a per-attempt count. A successful delivery resets it to
+         * 0, including a successful manual retry. At 20 the webhook is disabled
+         * automatically and `$lastStatus` becomes `auto_disabled`.
+         */
+        public int $failureCount,
+        /**
+         * Outcome of the most recent delivery: `success`, `failed`, or
+         * `auto_disabled` when the webhook was disabled after 20 consecutive
+         * failed deliveries. Null before the first delivery.
+         */
+        public ?string $lastStatus,
         public ?string $lastDeliveryAt,
         public ?string $createdAt,
         public ?string $updatedAt,
@@ -59,8 +77,11 @@ final readonly class Webhook
             timeout: isset($data['timeout']) ? (int) $data['timeout'] : null,
             headers: is_array($data['headers'] ?? null) ? $data['headers'] : null,
             deliveryCount: (int) ($data['deliveryCount'] ?? 0),
-            failedCount: (int) ($data['failedCount'] ?? 0),
-            lastDeliveryAt: isset($data['lastDeliveryAt']) ? (string) $data['lastDeliveryAt'] : null,
+            failureCount: (int) ($data['failureCount'] ?? $data['failure_count'] ?? 0),
+            lastStatus: isset($data['lastStatus']) ? (string) $data['lastStatus'] : null,
+            lastDeliveryAt: isset($data['lastTriggeredAt'])
+                ? (string) $data['lastTriggeredAt']
+                : (isset($data['lastDeliveryAt']) ? (string) $data['lastDeliveryAt'] : null),
             createdAt: isset($data['createdAt']) ? (string) $data['createdAt'] : null,
             updatedAt: isset($data['updatedAt']) ? (string) $data['updatedAt'] : null,
         );

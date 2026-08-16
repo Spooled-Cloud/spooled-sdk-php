@@ -54,12 +54,21 @@ $config = new WorkerConfig(
     workerType: 'php',
     // version defaults to Spooled\Version::VERSION (1.0.21)
     metadata: ['environment' => 'production'],
+    workerId: 'emails-worker-01', // stable registration identity
 );
 ```
 
 `WorkerConfig::fromArray()` is also supported for dynamic configuration. `queueName`/`queue` are accepted aliases.
 
 The current runtime executes its synchronous handler in the polling process, so claimed jobs are handled serially. `concurrency` controls advertised/claim capacity but does not create parallel handler execution. Run multiple worker processes for parallelism.
+
+## Worker Identity
+
+`workerId` is 1-128 characters from `[A-Za-z0-9._-]`. When set, `start()` sends it and registration becomes an upsert: the process reuses the row it already owns across restarts, and re-registering an id you own is not charged against the plan worker cap.
+
+Leave it null and the server mints a UUID per registration, as before. Every restart then leaves the previous row holding a worker-cap slot until the stale-worker reaper clears it about two minutes later, so a crash-looping worker on a tight plan can quota itself out of registering with `HTTP 429` (`RateLimitError`, `errorCode` `"QUOTA_EXCEEDED"`).
+
+Derive the value from something that survives a restart - the hostname, the supervisor process number, the replica ordinal - never from a PID or a freshly generated UUID, which defeat the upsert. An id already owned by a different organization is rejected with `HTTP 409` (`ConflictError`).
 
 ## Lease Renewal and Fencing
 
@@ -173,6 +182,8 @@ services:
 
 Scale with `docker compose up --scale spooled-worker=4 -d`. The PHP file should construct `WorkerConfig` (not the removed `WorkerOptions` API), enable `pcntl_async_signals(true)`, register `SIGTERM`/`SIGINT` handlers that call `$worker->stop()`, and then call the blocking `$worker->start()` as shown above. Choose `stop_grace_period` longer than `shutdownTimeout` (milliseconds) plus application cleanup time.
 
+Give each replica a `WorkerConfig::workerId` that is stable across restarts, read from an environment variable your orchestrator sets per replica. Redeployed containers then reuse their existing registrations instead of accumulating rows against the plan worker cap.
+
 ### Supervisor
 
 Install/enable `pcntl` and `posix` in the CLI PHP used by Supervisor, then run multiple independent processes:
@@ -194,7 +205,9 @@ killasgroup=true
 stopwaitsecs=45
 redirect_stderr=true
 stdout_logfile=/var/log/supervisor/spooled-worker.log
-environment=APP_ENV="production"
+environment=APP_ENV="production",SPOOLED_WORKER_ID="spooled-worker-%(process_num)02d"
 ```
 
 Provide `SPOOLED_API_KEY` through the host environment, a secret manager, or a protected Supervisor include rather than committing it in this file. Keep `stopwaitsecs` longer than `WorkerConfig::shutdownTimeout`; after that deadline Supervisor sends `SIGKILL`, which bypasses worker deregistration and graceful cleanup.
+
+The `SPOOLED_WORKER_ID` above gives each of the four processes one stable identity; pass it to `WorkerConfig::workerId` in `worker.php`. A `SIGKILL`ed process then upserts its existing row on restart instead of registering a fresh one and leaving the un-deregistered row occupying a plan worker-cap slot until the stale-worker reaper clears it.
