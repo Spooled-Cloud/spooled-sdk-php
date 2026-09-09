@@ -45,6 +45,10 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `auth->validate()` now maps `claims.org_id` / `api_key_id` / `queues` / `exp`
+  onto `organizationId` / `apiKeyId` / `scopes` / `expiresAt`. It previously
+  looked for a nested `user` and top-level `organizationId`, which the API
+  never sends, so a valid token looked empty.
 - `auth->me()` now returns `CurrentUserResponse` (`organizationId`, `apiKeyId`,
   `queues`, timestamps). It previously mapped GET /auth/me onto `User`, so
   `id`/`email` were always empty; the API never sends those fields.

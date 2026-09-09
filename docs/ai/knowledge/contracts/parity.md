@@ -12,6 +12,7 @@
 - `GET /jobs/{id}/dependencies` is `{ jobId, dependencies, dependents, dependenciesMet }` with `{ jobId, queueName, status }` edges. `isMet` is derived from `status === completed`.
 - Email availability is `GET /auth/check-email?email=`. The body is `available`, `exists`, `signupEnabled`. `canRegister` is derived (`available && signupEnabled`); the API does not send it.
 - `GET /auth/me` is a JWT session (`organization_id`, `api_key_id`, `queues`, `issued_at`, `expires_at`, optional `organization`), not an email user. PHP `auth->me()` returns `CurrentUserResponse`.
+- `POST /auth/validate` is `{ valid, error?, claims? }`. Claims are `org_id`, `api_key_id`, `queues`, `exp`. PHP `TokenValidation` maps those onto `organizationId` / `apiKeyId` / `scopes` / `expiresAt`; it does not send a nested `user`.
 - Email login start is `POST /auth/email/start` → `{ message, emailSentTo }`. `success` is derived (HTTP 200); the API does not send it.
 - Organization JSON uses `plan_tier` (camelCase `planTier`), not `plan`. `GET /organizations/usage` is the exception: that body uses `plan`.
 - Admin org update is `PATCH /admin/organizations/{id}`, not PUT. PHP `admin->updateOrganization()` must PATCH (Node/Python already do).

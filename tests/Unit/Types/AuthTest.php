@@ -10,10 +10,12 @@ use PHPUnit\Framework\TestCase;
 use Spooled\Types\CurrentUserResponse;
 use Spooled\Types\EmailCheckResponse;
 use Spooled\Types\EmailLoginStartResponse;
+use Spooled\Types\TokenValidation;
 
 #[CoversClass(CurrentUserResponse::class)]
 #[CoversClass(EmailCheckResponse::class)]
 #[CoversClass(EmailLoginStartResponse::class)]
+#[CoversClass(TokenValidation::class)]
 final class AuthTest extends TestCase
 {
     #[Test]
@@ -82,5 +84,41 @@ final class AuthTest extends TestCase
         $this->assertSame(['emails'], $got->queues);
         $this->assertSame('2024-01-01T00:00:00Z', $got->issuedAt);
         $this->assertSame('pro', $got->organization?->plan);
+    }
+
+    #[Test]
+    public function validate_maps_claims_not_a_nested_user(): void
+    {
+        $got = TokenValidation::fromArray([
+            'valid' => true,
+            'claims' => [
+                'orgId' => 'org_1',
+                'apiKeyId' => 'key_1',
+                'queues' => ['emails'],
+                'exp' => 1700003600,
+                'iat' => 1700000000,
+            ],
+        ]);
+
+        $this->assertTrue($got->valid);
+        $this->assertNull($got->user);
+        $this->assertSame('org_1', $got->organizationId);
+        $this->assertSame('key_1', $got->apiKeyId);
+        $this->assertSame(['emails'], $got->scopes);
+        $this->assertSame(1700003600, $got->expiresAt);
+        $this->assertNull($got->error);
+    }
+
+    #[Test]
+    public function validate_maps_error_when_invalid(): void
+    {
+        $got = TokenValidation::fromArray([
+            'valid' => false,
+            'error' => 'Invalid token',
+        ]);
+
+        $this->assertFalse($got->valid);
+        $this->assertSame('Invalid token', $got->error);
+        $this->assertNull($got->organizationId);
     }
 }

@@ -611,6 +611,7 @@ $jwtClient = new SpooledClient(
 ```php
 $result = $client->auth->validate($accessToken);
 echo "Valid: " . ($result->valid ? 'yes' : 'no') . "\n";
+echo "Organization: {$result->organizationId}\n";
 ```
 
 ### Refresh Token

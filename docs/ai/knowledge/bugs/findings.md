@@ -45,3 +45,4 @@
 | PH-40 | P1 | ~~`admin->listWorkflows()` called `/admin/workflows` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /workflows` |
 | PH-41 | P1 | ~~`ApiKey::$scopes` always null (API sends `queues`)~~ **FIXED** | `src/Types/ApiKey.php`; list/get `queues` (empty = all) |
 | PH-42 | P1 | ~~`auth->me()` mapped `/auth/me` onto `User` (empty id/email)~~ **FIXED** | `src/Types/Auth.php`; session is `organization_id`/`api_key_id`/`queues` |
+| PH-43 | P1 | ~~`auth->validate()` dropped `claims` (org/queues/exp always empty)~~ **FIXED** | `src/Types/Auth.php`; POST `/auth/validate` is `{valid,error,claims}` |

@@ -158,7 +158,10 @@ final readonly class EmailLoginStartResponse
 }
 
 /**
- * Token validation response.
+ * POST /auth/validate — `{ valid, error?, claims? }`.
+ *
+ * Claims carry `org_id`, `api_key_id`, `queues`, `exp`. The API never sends
+ * a nested `user` or top-level `organizationId`/`scopes`/`expiresAt`.
  */
 final readonly class TokenValidation
 {
@@ -166,9 +169,16 @@ final readonly class TokenValidation
         public bool $valid,
         public ?User $user,
         public ?string $organizationId,
-        /** @var array<string>|null */
+        /**
+         * Queue allowlist from `claims.queues` (empty = all). `$scopes` is the
+         * existing SDK name; the API field is `queues`.
+         *
+         * @var array<string>|null
+         */
         public ?array $scopes,
         public ?int $expiresAt,
+        public ?string $error = null,
+        public ?string $apiKeyId = null,
     ) {
     }
 
@@ -179,12 +189,34 @@ final readonly class TokenValidation
      */
     public static function fromArray(array $data): self
     {
+        $claims = is_array($data['claims'] ?? null) ? $data['claims'] : [];
+        $orgId = $data['organizationId']
+            ?? $data['organization_id']
+            ?? $claims['orgId']
+            ?? $claims['org_id']
+            ?? $claims['organizationId']
+            ?? null;
+        $apiKeyId = $claims['apiKeyId'] ?? $claims['api_key_id'] ?? $data['apiKeyId'] ?? null;
+        $exp = $data['expiresAt'] ?? $data['expires_at'] ?? $claims['exp'] ?? null;
+        $queues = $data['scopes'] ?? $claims['queues'] ?? null;
+        $queueList = null;
+        if (is_array($queues)) {
+            $queueList = [];
+            foreach ($queues as $item) {
+                if (is_string($item) && $item !== '') {
+                    $queueList[] = $item;
+                }
+            }
+        }
+
         return new self(
             valid: (bool) ($data['valid'] ?? false),
             user: isset($data['user']) && is_array($data['user']) ? User::fromArray($data['user']) : null,
-            organizationId: isset($data['organizationId']) ? (string) $data['organizationId'] : null,
-            scopes: isset($data['scopes']) && is_array($data['scopes']) ? $data['scopes'] : null,
-            expiresAt: isset($data['expiresAt']) ? (int) $data['expiresAt'] : null,
+            organizationId: $orgId !== null ? (string) $orgId : null,
+            scopes: $queueList,
+            expiresAt: $exp !== null ? (int) $exp : null,
+            error: isset($data['error']) ? (string) $data['error'] : null,
+            apiKeyId: $apiKeyId !== null ? (string) $apiKeyId : null,
         );
     }
 }
