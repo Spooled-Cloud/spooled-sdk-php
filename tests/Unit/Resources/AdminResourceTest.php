@@ -57,4 +57,29 @@ final class AdminResourceTest extends TestCase
 
         $this->assertTrue($got->success);
     }
+
+    #[Test]
+    public function set_organization_limits_patches_custom_limits_not_a_missing_put_route(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('patch')
+            ->with(
+                'admin/organizations/org_1',
+                ['customLimits' => ['max_jobs_per_day' => 1000]],
+                [],
+                ['X-Admin-Key' => 'adminkey'],
+            )
+            ->willReturn([
+                'id' => 'org_1',
+                'name' => 'Acme',
+                'planTier' => 'pro',
+            ]);
+        $httpClient->expects($this->never())->method('put');
+
+        $got = (new AdminResource($httpClient, 'adminkey'))
+            ->setOrganizationLimits('org_1', ['max_jobs_per_day' => 1000]);
+
+        $this->assertSame('org_1', $got->id);
+    }
 }

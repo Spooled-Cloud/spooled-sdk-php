@@ -236,13 +236,16 @@ final class AdminResource extends BaseResource
     /**
      * Set organization limits (admin).
      *
-     * @param array<string, int> $limits
+     * There is no `PUT /admin/organizations/{id}/limits`. Custom limits are
+     * `PATCH /admin/organizations/{id}` with `custom_limits`.
+     *
+     * @param array<string, mixed> $limits
      */
     public function setOrganizationLimits(string $orgId, array $limits): Organization
     {
-        $response = $this->httpClient->put(
-            "admin/organizations/{$orgId}/limits",
-            $limits,
+        $response = $this->httpClient->patch(
+            "admin/organizations/{$orgId}",
+            ['customLimits' => $limits],
             [],
             $this->getAdminHeaders(),
         );

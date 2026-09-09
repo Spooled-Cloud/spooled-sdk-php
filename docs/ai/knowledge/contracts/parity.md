@@ -15,6 +15,7 @@
 - Organization JSON uses `plan_tier` (camelCase `planTier`), not `plan`. `GET /organizations/usage` is the exception: that body uses `plan`.
 - Admin org update is `PATCH /admin/organizations/{id}`, not PUT. PHP `admin->updateOrganization()` must PATCH (Node/Python already do).
 - Admin hard delete is `DELETE /admin/organizations/{id}?hard_delete=true`. PHP `deleteOrganization($id, true)` sends that query.
+- There is no `PUT /admin/organizations/{id}/limits`. PHP `setOrganizationLimits()` PATCHes `{customLimits}` on the org.
 - `GET /organizations/usage` is `{ plan, plan_display_name, limits, usage, warnings }`. `usage` includes `jobs_today` and `workflows`. Each usage item has `current`, `limit`, `percentage`, `is_disabled`.
 - `POST /organizations` returns `{ organization, api_key }`. The key is shown once; `organizations->create()` returns `CreateOrganizationResponse`.
 - GET/POST `/organizations/webhook-token` returns `{ webhook_token, webhook_url }`. PHP `WebhookToken::$token`/`$url` map those; the API never sends `createdAt`/`expiresAt`.
