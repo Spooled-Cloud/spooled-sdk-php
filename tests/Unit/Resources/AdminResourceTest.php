@@ -121,4 +121,29 @@ final class AdminResourceTest extends TestCase
 
         $this->assertTrue($got->success);
     }
+
+    #[Test]
+    public function cancel_job_deletes_then_loads_the_cancelled_row(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('delete')
+            ->with('jobs/job_1', [], ['X-Admin-Key' => 'adminkey'])
+            ->willReturn([]);
+        $httpClient->expects($this->once())
+            ->method('get')
+            ->with('jobs/job_1', [], ['X-Admin-Key' => 'adminkey'])
+            ->willReturn([
+                'id' => 'job_1',
+                'queueName' => 'emails',
+                'status' => 'cancelled',
+                'payload' => ['n' => 1],
+            ]);
+        $httpClient->expects($this->never())->method('post');
+
+        $got = (new AdminResource($httpClient, 'adminkey'))->cancelJob('job_1');
+
+        $this->assertSame('job_1', $got->id);
+        $this->assertSame('cancelled', $got->status);
+    }
 }

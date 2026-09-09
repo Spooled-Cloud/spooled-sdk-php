@@ -104,11 +104,17 @@ final class AdminResource extends BaseResource
     }
 
     /**
-     * Cancel a job (admin).
+     * Cancel a pending or scheduled job.
+     *
+     * There is no `POST /admin/jobs/{id}/cancel`. The backend contract is
+     * `DELETE /jobs/{id}`, which returns 204. Parsing that empty body as a Job
+     * produced id="" and status="pending", so we fetch the cancelled row.
      */
     public function cancelJob(string $jobId): Job
     {
-        $response = $this->httpClient->post("admin/jobs/{$jobId}/cancel", null, [], $this->getAdminHeaders());
+        $this->httpClient->delete("jobs/{$jobId}", [], $this->getAdminHeaders());
+
+        $response = $this->httpClient->get("jobs/{$jobId}", [], $this->getAdminHeaders());
 
         return Job::fromArray($response);
     }

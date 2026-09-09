@@ -24,6 +24,7 @@
 - There is no `POST /queues/{name}/purge`. PHP `queues->purge()` is `DELETE /queues/{name}?delete_jobs=true` (drops jobs and the config row). `delete($name)` omits the flag.
 - There is no `POST /admin/queues/{name}/purge`. PHP `admin->purgeQueue()` is the same `DELETE /queues/{name}?delete_jobs=true`.
 - There is no `DELETE /admin/workers/{id}`. PHP `admin->deregisterWorker()` is `POST /workers/{id}/deregister` (DELETE on that path 405s).
+- There is no `POST /admin/jobs/{id}/cancel`. PHP `admin->cancelJob()` is `DELETE /jobs/{id}` then `GET /jobs/{id}` (204 empty body is not a Job).
 - Queue stats are `pending_jobs`, `processing_jobs`, `completed_jobs_24h`, `failed_jobs_24h`, `avg_processing_time_ms`, not `pending`/`claimed`/`completed`.
 - API key JSON uses `is_active` (camelCase `isActive`) and `last_used` (`lastUsed`), not `active`/`lastUsedAt`. List/get never send `prefix`; create returns `key` once.
 - Outgoing webhook delivery JSON uses `event`, `attempts`, and `response_body` (camelCase `responseBody`), not `eventType`/`attemptNumber`/`response`.

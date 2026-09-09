@@ -45,6 +45,9 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `admin->cancelJob()` now sends `DELETE /jobs/{id}` and then loads the
+  cancelled row. It previously POSTed `/admin/jobs/{id}/cancel`, which is not
+  a backend route, so every cancel 404'd.
 - `admin->deregisterWorker()` now sends `POST /workers/{id}/deregister`.
   It previously DELETEd `/admin/workers/{id}`, which is not a backend route,
   so every deregister 404'd. DELETE on the real path 405s.
