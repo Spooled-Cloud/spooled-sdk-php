@@ -632,7 +632,7 @@ echo "API key: {$me->apiKeyId}\n";
 ### Logout
 
 ```php
-$client->auth->logout();
+$client->auth->logout(); // sends the stored refresh token so /auth/refresh cannot mint a new pair
 ```
 
 ---

@@ -237,6 +237,14 @@ class HttpClient
     }
 
     /**
+     * Get the current refresh token.
+     */
+    public function getRefreshToken(): ?string
+    {
+        return $this->refreshToken;
+    }
+
+    /**
      * Get the circuit breaker instance.
      */
     public function getCircuitBreaker(): CircuitBreaker

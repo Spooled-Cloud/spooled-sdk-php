@@ -45,6 +45,10 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `auth->logout()` now sends the refresh token in the body. Without it the
+  access token is blacklisted but `/auth/refresh` still mints a new pair, so
+  logout did not end the session. The stored refresh token is used when the
+  argument is omitted, matching the Node SDK.
 - `auth->validate()` now maps `claims.org_id` / `api_key_id` / `queues` / `exp`
   onto `organizationId` / `apiKeyId` / `scopes` / `expiresAt`. It previously
   looked for a nested `user` and top-level `organizationId`, which the API

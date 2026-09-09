@@ -43,10 +43,17 @@ final class AuthResource extends BaseResource
 
     /**
      * Logout and invalidate tokens.
+     *
+     * POST /auth/logout blacklists the access token from the Authorization
+     * header. The refresh token must be in the body or the session survives
+     * via /auth/refresh. When omitted, the client's stored refresh token is
+     * sent (same as the Node SDK).
      */
-    public function logout(): SuccessResponse
+    public function logout(?string $refreshToken = null): SuccessResponse
     {
-        $response = $this->httpClient->post('auth/logout');
+        $token = $refreshToken ?? $this->httpClient->getRefreshToken();
+        $body = ($token !== null && $token !== '') ? ['refreshToken' => $token] : null;
+        $response = $this->httpClient->post('auth/logout', $body);
 
         return SuccessResponse::fromArray($response);
     }
