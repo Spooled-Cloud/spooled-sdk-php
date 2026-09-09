@@ -544,6 +544,7 @@ $result = $client->organizations->create([
 ```php
 $usage = $client->organizations->getUsage();
 echo "Plan: {$usage->plan}\n";
+echo "Jobs today: {$usage->usage->jobsToday->current}\n";
 echo "Active jobs: {$usage->usage->activeJobs->current}\n";
 ```
 

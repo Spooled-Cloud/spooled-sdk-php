@@ -164,6 +164,8 @@ final readonly class UsageItem
     public function __construct(
         public int $current,
         public ?int $limit,
+        public ?float $percentage = null,
+        public bool $isDisabled = false,
     ) {
     }
 
@@ -172,9 +174,13 @@ final readonly class UsageItem
      */
     public static function fromArray(array $data): self
     {
+        $percentage = $data['percentage'] ?? null;
+
         return new self(
             current: (int) ($data['current'] ?? 0),
             limit: isset($data['limit']) ? (int) $data['limit'] : null,
+            percentage: $percentage !== null ? (float) $percentage : null,
+            isDisabled: (bool) ($data['isDisabled'] ?? $data['is_disabled'] ?? false),
         );
     }
 }
@@ -192,6 +198,9 @@ final readonly class OrganizationLimits
         public ?int $maxSchedules,
         public ?int $maxWebhooks,
         public ?int $maxApiKeys,
+        public ?string $displayName = null,
+        public ?int $maxJobsPerDay = null,
+        public ?int $maxWorkflows = null,
     ) {
     }
 
@@ -220,6 +229,15 @@ final readonly class OrganizationLimits
             maxApiKeys: isset($data['max_api_keys']) || isset($data['maxApiKeys'])
                 ? (int) ($data['max_api_keys'] ?? $data['maxApiKeys'])
                 : null,
+            displayName: isset($data['displayName']) || isset($data['display_name'])
+                ? (string) ($data['displayName'] ?? $data['display_name'])
+                : null,
+            maxJobsPerDay: isset($data['maxJobsPerDay']) || isset($data['max_jobs_per_day'])
+                ? (int) ($data['maxJobsPerDay'] ?? $data['max_jobs_per_day'])
+                : null,
+            maxWorkflows: isset($data['maxWorkflows']) || isset($data['max_workflows'])
+                ? (int) ($data['maxWorkflows'] ?? $data['max_workflows'])
+                : null,
         );
     }
 }
@@ -236,6 +254,8 @@ final readonly class UsageBreakdown
         public UsageItem $schedules,
         public UsageItem $webhooks,
         public UsageItem $apiKeys,
+        public ?UsageItem $jobsToday = null,
+        public ?UsageItem $workflows = null,
     ) {
     }
 
@@ -251,6 +271,33 @@ final readonly class UsageBreakdown
             schedules: UsageItem::fromArray($data['schedules'] ?? []),
             webhooks: UsageItem::fromArray($data['webhooks'] ?? []),
             apiKeys: UsageItem::fromArray($data['apiKeys'] ?? $data['api_keys'] ?? []),
+            jobsToday: UsageItem::fromArray($data['jobsToday'] ?? $data['jobs_today'] ?? []),
+            workflows: UsageItem::fromArray($data['workflows'] ?? []),
+        );
+    }
+}
+
+/**
+ * Quota warning from GET /organizations/usage.
+ */
+final readonly class UsageWarning
+{
+    public function __construct(
+        public string $resource,
+        public string $message,
+        public string $severity,
+    ) {
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            resource: (string) ($data['resource'] ?? ''),
+            message: (string) ($data['message'] ?? ''),
+            severity: (string) ($data['severity'] ?? 'warning'),
         );
     }
 }
@@ -260,10 +307,15 @@ final readonly class UsageBreakdown
  */
 final readonly class OrganizationUsage
 {
+    /**
+     * @param list<UsageWarning> $warnings
+     */
     public function __construct(
         public string $plan,
         public OrganizationLimits $limits,
         public UsageBreakdown $usage,
+        public string $planDisplayName = '',
+        public array $warnings = [],
     ) {
     }
 
@@ -274,10 +326,19 @@ final readonly class OrganizationUsage
      */
     public static function fromArray(array $data): self
     {
+        $warnings = [];
+        foreach ($data['warnings'] ?? [] as $item) {
+            if (is_array($item)) {
+                $warnings[] = UsageWarning::fromArray($item);
+            }
+        }
+
         return new self(
             plan: (string) ($data['plan'] ?? 'free'),
             limits: OrganizationLimits::fromArray($data['limits'] ?? []),
             usage: UsageBreakdown::fromArray($data['usage'] ?? []),
+            planDisplayName: (string) ($data['planDisplayName'] ?? $data['plan_display_name'] ?? ''),
+            warnings: $warnings,
         );
     }
 }

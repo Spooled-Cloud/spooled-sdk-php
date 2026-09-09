@@ -12,6 +12,7 @@
 - Email availability is `GET /auth/check-email?email=`. The body is `available`, `exists`, `signupEnabled`. `canRegister` is derived (`available && signupEnabled`); the API does not send it.
 - Email login start is `POST /auth/email/start` → `{ message, emailSentTo }`. `success` is derived (HTTP 200); the API does not send it.
 - Organization JSON uses `plan_tier` (camelCase `planTier`), not `plan`. `GET /organizations/usage` is the exception: that body uses `plan`.
+- `GET /organizations/usage` is `{ plan, plan_display_name, limits, usage, warnings }`. `usage` includes `jobs_today` and `workflows`. Each usage item has `current`, `limit`, `percentage`, `is_disabled`.
 - `POST /organizations` returns `{ organization, api_key }`. The key is shown once; `organizations->create()` returns `CreateOrganizationResponse`.
 - GET/POST `/organizations/webhook-token` returns `{ webhook_token, webhook_url }`. PHP `WebhookToken::$token`/`$url` map those; the API never sends `createdAt`/`expiresAt`.
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `suggestions`.

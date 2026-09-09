@@ -9,11 +9,13 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Spooled\Types\CreateOrganizationResponse;
 use Spooled\Types\Organization;
+use Spooled\Types\OrganizationUsage;
 use Spooled\Types\WebhookToken;
 
 #[CoversClass(Organization::class)]
 #[CoversClass(CreateOrganizationResponse::class)]
 #[CoversClass(WebhookToken::class)]
+#[CoversClass(OrganizationUsage::class)]
 final class OrganizationTest extends TestCase
 {
     #[Test]
@@ -71,5 +73,42 @@ final class OrganizationTest extends TestCase
             'https://api.spooled.cloud/api/v1/webhooks/org_1/custom',
             $got->url,
         );
+    }
+
+    #[Test]
+    public function usage_reads_jobs_today_and_warnings(): void
+    {
+        $got = OrganizationUsage::fromArray([
+            'plan' => 'starter',
+            'planDisplayName' => 'Starter',
+            'limits' => [
+                'tier' => 'starter',
+                'displayName' => 'Starter',
+                'maxJobsPerDay' => 10000,
+                'maxActiveJobs' => 100,
+            ],
+            'usage' => [
+                'jobsToday' => [
+                    'current' => 500,
+                    'limit' => 10000,
+                    'percentage' => 5.0,
+                    'isDisabled' => false,
+                ],
+                'activeJobs' => ['current' => 2, 'limit' => 100],
+                'workflows' => ['current' => 1, 'limit' => 10],
+            ],
+            'warnings' => [
+                ['resource' => 'jobs_today', 'message' => 'at 5%', 'severity' => 'warning'],
+            ],
+        ]);
+
+        $this->assertSame('starter', $got->plan);
+        $this->assertSame('Starter', $got->planDisplayName);
+        $this->assertSame(10000, $got->limits->maxJobsPerDay);
+        $this->assertSame(500, $got->usage->jobsToday?->current);
+        $this->assertSame(5.0, $got->usage->jobsToday?->percentage);
+        $this->assertSame(1, $got->usage->workflows?->current);
+        $this->assertCount(1, $got->warnings);
+        $this->assertSame('jobs_today', $got->warnings[0]->resource);
     }
 }
