@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Spooled\Resources;
 
+use Spooled\Errors\NotFoundError;
 use Spooled\Http\HttpClient;
 use Spooled\Types\JobWithDependencies;
 use Spooled\Types\SuccessResponse;
@@ -107,17 +108,9 @@ final class WorkflowJobsSubResource extends BaseResource
      */
     public function list(string $workflowId, array $params = []): array
     {
-        $response = $this->httpClient->get("workflows/{$workflowId}/jobs", $params);
-        $jobs = $response['jobs'] ?? $response['data'] ?? $response;
+        $response = $this->httpClient->get("workflows/{$workflowId}");
 
-        if (!is_array($jobs) || (isset($jobs['id']))) {
-            $jobs = [];
-        }
-
-        return array_map(
-            fn (array $item) => WorkflowJob::fromArray($item),
-            $jobs,
-        );
+        return $this->jobsFromDetail($response);
     }
 
     /**
@@ -125,9 +118,13 @@ final class WorkflowJobsSubResource extends BaseResource
      */
     public function get(string $workflowId, string $jobId): WorkflowJob
     {
-        $response = $this->httpClient->get("workflows/{$workflowId}/jobs/{$jobId}");
+        foreach ($this->list($workflowId) as $job) {
+            if ($job->id === $jobId) {
+                return $job;
+            }
+        }
 
-        return WorkflowJob::fromArray($response);
+        throw new NotFoundError("Job {$jobId} not found in workflow {$workflowId}");
     }
 
     /**
@@ -137,17 +134,18 @@ final class WorkflowJobsSubResource extends BaseResource
      */
     public function getStatus(string $workflowId): array
     {
-        $response = $this->httpClient->get("workflows/{$workflowId}/jobs/status");
-        $statuses = $response['statuses'] ?? $response['jobs'] ?? $response;
-
-        if (!is_array($statuses) || (isset($statuses['id']))) {
-            $statuses = [];
+        $statuses = [];
+        foreach ($this->list($workflowId) as $job) {
+            $statuses[] = new WorkflowJobStatus(
+                jobId: $job->id,
+                key: $job->key,
+                status: $job->status,
+                retryCount: $job->retryCount,
+                error: $job->error,
+            );
         }
 
-        return array_map(
-            fn (array $item) => WorkflowJobStatus::fromArray($item),
-            $statuses,
-        );
+        return $statuses;
     }
 
     /**
@@ -165,11 +163,71 @@ final class WorkflowJobsSubResource extends BaseResource
     /**
      * Add dependencies to a job.
      *
-     * @param array<string, mixed> $params {dependsOnJobIds: string[]}
-     * @return array{success: bool, dependencies: string[]}
+     * @param array<string, mixed> $params {dependsOnJobIds?: string[], dependsOn?: string[], dependencyMode?: string}
+     * @return array{success: bool, added: int, dependenciesMet: bool, dependencies: mixed}
      */
     public function addDependencies(string $jobId, array $params): array
     {
-        return $this->httpClient->post("jobs/{$jobId}/dependencies", $params);
+        $ids = $params['dependsOn'] ?? $params['dependsOnJobIds'] ?? $params['depends_on'] ?? [];
+        $mode = $params['dependencyMode'] ?? $params['dependency_mode'] ?? null;
+        $type = $params['dependencyType'] ?? $params['dependency_type'] ?? null;
+        if ($mode === null && ($type === 'all' || $type === 'any')) {
+            $mode = $type;
+        }
+
+        $body = ['dependsOn' => $ids];
+        if ($mode !== null) {
+            $body['dependencyMode'] = $mode;
+        }
+
+        $response = $this->httpClient->post("jobs/{$jobId}/dependencies", $body);
+        $added = (int) ($response['dependenciesAdded'] ?? $response['added'] ?? 0);
+
+        return [
+            'success' => $added > 0,
+            'added' => $added,
+            'dependenciesMet' => (bool) ($response['dependenciesMet'] ?? false),
+            'dependencies' => $response['dependencies'] ?? [],
+        ];
+    }
+
+    /**
+     * @param array<string, mixed> $detail
+     * @return array<WorkflowJob>
+     */
+    private function jobsFromDetail(array $detail): array
+    {
+        $jobs = $detail['jobs'] ?? [];
+        if (!is_array($jobs) || $jobs === [] || isset($jobs['id'])) {
+            return [];
+        }
+
+        $deps = is_array($detail['dependencies'] ?? null) ? $detail['dependencies'] : [];
+        $workflowId = (string) ($detail['id'] ?? '');
+        $mapped = [];
+
+        foreach ($jobs as $item) {
+            if (!is_array($item)) {
+                continue;
+            }
+            $id = (string) ($item['id'] ?? '');
+            $dependsOn = [];
+            foreach ($deps as $edge) {
+                if (is_array($edge) && (string) ($edge['childJobId'] ?? '') === $id) {
+                    $dependsOn[] = (string) ($edge['parentJobId'] ?? '');
+                }
+            }
+            $item['dependsOn'] = $dependsOn;
+            $item['workflowId'] = $item['workflowId'] ?? $workflowId;
+            if (isset($item['error']) && is_array($item['error'])) {
+                $item['error'] = (string) ($item['error']['message'] ?? '');
+            }
+            if (isset($item['attempt']) && !isset($item['retryCount'])) {
+                $item['retryCount'] = $item['attempt'];
+            }
+            $mapped[] = WorkflowJob::fromArray($item);
+        }
+
+        return $mapped;
     }
 }

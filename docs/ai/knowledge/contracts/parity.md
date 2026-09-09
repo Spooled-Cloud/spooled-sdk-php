@@ -5,3 +5,4 @@
 - `Webhook::$failureCount` maps `failure_count` (consecutive failed **deliveries**, not attempts; 20 -> auto-disable, `$lastStatus === 'auto_disabled'`). `$secret` is always null (backend `skip_serializing`) and `$deliveryCount`/`$maxRetries`/`$timeout`/`$headers` have no REST counterpart.
 - Typed `CreateJobParams`: `queue`/`scheduledFor`, default maxRetries 3, **no timeoutSeconds**; `toArray` may emit `scheduledFor` vs API `scheduledAt` — verify mapping in JobsResource.
 - Worker progress/log emits local job logs only; Go remains the SDK with backend-persisted `POST /jobs/{id}/progress`. Lease renew needs pcntl/posix.
+- Workflow job list/get/status are not their own REST routes. `GET /workflows/{id}` carries jobs + dependencies; `workflows->jobs->list()` reads that document. `POST /jobs/{id}/dependencies` takes `depends_on` + `dependency_mode` and returns `dependencies_added` / `dependencies_met`.
