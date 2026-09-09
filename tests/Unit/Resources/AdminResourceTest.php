@@ -146,4 +146,46 @@ final class AdminResourceTest extends TestCase
         $this->assertSame('job_1', $got->id);
         $this->assertSame('cancelled', $got->status);
     }
+
+    #[Test]
+    public function list_jobs_gets_jobs_not_a_missing_admin_route(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('get')
+            ->with('jobs', ['status' => 'pending'], ['X-Admin-Key' => 'adminkey'])
+            ->willReturn([
+                [
+                    'id' => 'job_1',
+                    'queueName' => 'emails',
+                    'status' => 'pending',
+                ],
+            ]);
+
+        $got = (new AdminResource($httpClient, 'adminkey'))
+            ->listJobs(['status' => 'pending']);
+
+        $this->assertCount(1, $got->jobs);
+        $this->assertSame('job_1', $got->jobs[0]->id);
+    }
+
+    #[Test]
+    public function get_job_gets_jobs_id_not_a_missing_admin_route(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('get')
+            ->with('jobs/job_1', [], ['X-Admin-Key' => 'adminkey'])
+            ->willReturn([
+                'id' => 'job_1',
+                'queueName' => 'emails',
+                'status' => 'pending',
+                'payload' => ['n' => 1],
+            ]);
+
+        $got = (new AdminResource($httpClient, 'adminkey'))->getJob('job_1');
+
+        $this->assertSame('job_1', $got->id);
+        $this->assertSame('pending', $got->status);
+    }
 }

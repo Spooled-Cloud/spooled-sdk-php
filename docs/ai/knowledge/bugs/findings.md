@@ -38,3 +38,4 @@
 | PH-33 | P1 | ~~`admin->purgeQueue()` POSTed `/admin/queues/{name}/purge` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `DELETE /queues/{name}?delete_jobs=true` |
 | PH-34 | P1 | ~~`admin->deregisterWorker()` DELETEd `/admin/workers/{id}` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `POST /workers/{id}/deregister` |
 | PH-35 | P1 | ~~`admin->cancelJob()` POSTed `/admin/jobs/{id}/cancel` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `DELETE /jobs/{id}` then GET |
+| PH-36 | P1 | ~~`admin->listJobs()` / `getJob()` called `/admin/jobs` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /jobs` and `GET /jobs/{id}` |

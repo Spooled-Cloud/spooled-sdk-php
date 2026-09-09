@@ -82,23 +82,27 @@ final class AdminResource extends BaseResource
     }
 
     /**
-     * List all jobs (admin).
+     * List jobs.
+     *
+     * There is no `GET /admin/jobs`. The backend contract is `GET /jobs`.
      *
      * @param array<string, mixed> $params
      */
     public function listJobs(array $params = []): JobList
     {
-        $response = $this->httpClient->get('admin/jobs', $params, $this->getAdminHeaders());
+        $response = $this->httpClient->get('jobs', $params, $this->getAdminHeaders());
 
         return JobList::fromArray($response);
     }
 
     /**
-     * Get a job (admin).
+     * Get a job by ID.
+     *
+     * There is no `GET /admin/jobs/{id}`. The backend contract is `GET /jobs/{id}`.
      */
     public function getJob(string $jobId): Job
     {
-        $response = $this->httpClient->get("admin/jobs/{$jobId}", [], $this->getAdminHeaders());
+        $response = $this->httpClient->get("jobs/{$jobId}", [], $this->getAdminHeaders());
 
         return Job::fromArray($response);
     }

@@ -45,6 +45,9 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `admin->listJobs()` / `getJob()` now call `GET /jobs` and `GET /jobs/{id}`.
+  They previously requested `/admin/jobs`, which is not a backend route, so
+  every list or get 404'd.
 - `admin->cancelJob()` now sends `DELETE /jobs/{id}` and then loads the
   cancelled row. It previously POSTed `/admin/jobs/{id}/cancel`, which is not
   a backend route, so every cancel 404'd.
