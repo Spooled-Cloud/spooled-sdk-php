@@ -13,6 +13,7 @@
 - Email login start is `POST /auth/email/start` → `{ message, emailSentTo }`. `success` is derived (HTTP 200); the API does not send it.
 - Organization JSON uses `plan_tier` (camelCase `planTier`), not `plan`. `GET /organizations/usage` is the exception: that body uses `plan`.
 - `POST /organizations` returns `{ organization, api_key }`. The key is shown once; `organizations->create()` returns `CreateOrganizationResponse`.
+- GET/POST `/organizations/webhook-token` returns `{ webhook_token, webhook_url }`. PHP `WebhookToken::$token`/`$url` map those; the API never sends `createdAt`/`expiresAt`.
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `suggestions`.
 - Queue JSON uses `queue_name` (camelCase `queueName`), not `name`. List/get send `enabled` and `default_timeout`; `paused` is on pause/get-info only.
 - Queue stats are `pending_jobs`, `processing_jobs`, `completed_jobs_24h`, `failed_jobs_24h`, `avg_processing_time_ms`, not `pending`/`claimed`/`completed`.

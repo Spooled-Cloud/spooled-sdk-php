@@ -9,8 +9,11 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Spooled\Types\CreateOrganizationResponse;
 use Spooled\Types\Organization;
+use Spooled\Types\WebhookToken;
 
 #[CoversClass(Organization::class)]
+#[CoversClass(CreateOrganizationResponse::class)]
+#[CoversClass(WebhookToken::class)]
 final class OrganizationTest extends TestCase
 {
     #[Test]
@@ -53,5 +56,20 @@ final class OrganizationTest extends TestCase
         $this->assertSame('org_1', $got->organization->id);
         $this->assertSame('sp_live_abc123', $got->apiKey->key);
         $this->assertSame('key_1', $got->apiKey->id);
+    }
+
+    #[Test]
+    public function webhook_token_reads_webhook_url(): void
+    {
+        $got = WebhookToken::fromArray([
+            'webhookToken' => 'whk_abc123',
+            'webhookUrl' => 'https://api.spooled.cloud/api/v1/webhooks/org_1/custom',
+        ]);
+
+        $this->assertSame('whk_abc123', $got->token);
+        $this->assertSame(
+            'https://api.spooled.cloud/api/v1/webhooks/org_1/custom',
+            $got->url,
+        );
     }
 }

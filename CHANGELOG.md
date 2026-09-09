@@ -99,6 +99,9 @@ Tracks Spooled backend 0.1.111.
 - `workflows->create()` now backfills `name` and `totalJobs` from the request.
   `POST /workflows` only returns `workflowId`/`jobIds`/`status`, so those
   fields previously read as empty and 0.
+- `WebhookToken::$url` now maps `webhookUrl` from GET/POST
+  `/organizations/webhook-token`. The API always sends the inbound URL; the
+  SDK previously dropped it.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 **Breaking:** `webhooks->test()` now returns `TestWebhookResponse` instead of `WebhookDelivery`. The test endpoint never sent a delivery.

@@ -29,3 +29,4 @@
 | PH-24 | P1 | ~~`DashboardStats` 24h counts and averages always 0 (API sends `completed_24h`/`avg_wait_time_ms`, camelCased)~~ **FIXED** | `src/Types/Common.php` |
 | PH-25 | P1 | ~~`workflows->create()` sent `queue`; API requires `queue_name` so documented creates 422~~ **FIXED** | `src/Resources/WorkflowsResource.php` |
 | PH-26 | P1 | ~~`workflows->create()` left `name` empty and `totalJobs` 0 (create body is workflowId/jobIds/status)~~ **FIXED** | `src/Resources/WorkflowsResource.php` |
+| PH-27 | P1 | ~~`WebhookToken` dropped `webhook_url` from GET/POST `/organizations/webhook-token`~~ **FIXED** | `src/Types/Organization.php` |

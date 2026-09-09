@@ -326,6 +326,8 @@ final readonly class WebhookToken
         public string $token,
         public ?string $createdAt,
         public ?string $expiresAt,
+        /** Inbound webhook URL from GET/POST /organizations/webhook-token. */
+        public ?string $url = null,
     ) {
     }
 
@@ -336,10 +338,13 @@ final readonly class WebhookToken
      */
     public static function fromArray(array $data): self
     {
+        $url = $data['webhookUrl'] ?? $data['webhook_url'] ?? $data['url'] ?? null;
+
         return new self(
             token: (string) ($data['token'] ?? $data['webhookToken'] ?? ''),
             createdAt: isset($data['createdAt']) ? (string) $data['createdAt'] : null,
             expiresAt: isset($data['expiresAt']) ? (string) $data['expiresAt'] : null,
+            url: is_string($url) && $url !== '' ? $url : null,
         );
     }
 }
