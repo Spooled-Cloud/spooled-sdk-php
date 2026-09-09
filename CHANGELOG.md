@@ -62,6 +62,10 @@ Tracks Spooled backend 0.1.111.
   `suggestions` (plural), which the API never sends.
 - `Queue` now reads `queueName` (`queue_name`). It previously looked for
   `name`, which list/get never send, so every queue looked unnamed.
+- `QueueStats` now reads `pendingJobs`, `processingJobs`, `completedJobs24h`,
+  `failedJobs24h`, and `avgProcessingTimeMs`. It previously looked for
+  `pending`/`claimed`/`completed`/`failed`/`avgProcessingTime`, which
+  `GET /queues/{name}/stats` never sends, so every count was 0.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 

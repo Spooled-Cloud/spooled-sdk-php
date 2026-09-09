@@ -130,16 +130,36 @@ final readonly class QueueStats
     public static function fromArray(array $data): self
     {
         return new self(
-            name: (string) ($data['name'] ?? $data['queueName'] ?? ''),
-            pending: (int) ($data['pending'] ?? 0),
-            claimed: (int) ($data['claimed'] ?? 0),
-            completed: (int) ($data['completed'] ?? 0),
-            failed: (int) ($data['failed'] ?? 0),
+            name: (string) ($data['queueName'] ?? $data['queue_name'] ?? $data['name'] ?? ''),
+            pending: (int) ($data['pendingJobs'] ?? $data['pending_jobs'] ?? $data['pending'] ?? 0),
+            claimed: (int) (
+                $data['processingJobs']
+                ?? $data['processing_jobs']
+                ?? $data['claimed']
+                ?? 0
+            ),
+            completed: (int) (
+                $data['completedJobs24h']
+                ?? $data['completed_jobs_24h']
+                ?? $data['completed']
+                ?? 0
+            ),
+            failed: (int) (
+                $data['failedJobs24h']
+                ?? $data['failed_jobs_24h']
+                ?? $data['failed']
+                ?? 0
+            ),
             cancelled: (int) ($data['cancelled'] ?? 0),
             scheduled: (int) ($data['scheduled'] ?? 0),
             total: (int) ($data['total'] ?? 0),
-            activeWorkers: (int) ($data['activeWorkers'] ?? 0),
-            avgProcessingTime: (float) ($data['avgProcessingTime'] ?? 0.0),
+            activeWorkers: (int) ($data['activeWorkers'] ?? $data['active_workers'] ?? 0),
+            avgProcessingTime: (float) (
+                $data['avgProcessingTimeMs']
+                ?? $data['avg_processing_time_ms']
+                ?? $data['avgProcessingTime']
+                ?? 0.0
+            ),
             throughput: (float) ($data['throughput'] ?? 0.0),
         );
     }
