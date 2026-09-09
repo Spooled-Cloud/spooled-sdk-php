@@ -182,13 +182,15 @@ final class AdminResource extends BaseResource
     }
 
     /**
-     * List all schedules (admin).
+     * List schedules.
+     *
+     * There is no `GET /admin/schedules`. The backend contract is `GET /schedules`.
      *
      * @param array<string, mixed> $params
      */
     public function listSchedules(array $params = []): ScheduleList
     {
-        $response = $this->httpClient->get('admin/schedules', $params, $this->getAdminHeaders());
+        $response = $this->httpClient->get('schedules', $params, $this->getAdminHeaders());
 
         return ScheduleList::fromArray($response);
     }
