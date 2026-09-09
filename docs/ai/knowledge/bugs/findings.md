@@ -15,3 +15,4 @@
 | PH-10 | P1 | ~~`checkEmail` dropped `available`/`signupEnabled`; `canRegister` always true~~ **FIXED** | `src/Types/Auth.php`; backend is `GET /auth/check-email` |
 | PH-11 | P2 | ~~`emailStart` dropped `emailSentTo`~~ **FIXED** | `src/Types/Auth.php`; body is `message` + `email_sent_to` |
 | PH-12 | P1 | ~~`Organization::$plan` always `free` (API sends `plan_tier`)~~ **FIXED** | `src/Types/Organization.php` |
+| PH-13 | P1 | ~~`organizations->create()` dropped the one-time `api_key`~~ **FIXED** | `src/Resources/OrganizationsResource.php` |

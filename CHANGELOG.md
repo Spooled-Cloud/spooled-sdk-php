@@ -53,6 +53,10 @@ Tracks Spooled backend 0.1.111.
   never sends.
 - `Organization` now reads `planTier` (`plan_tier`). It previously looked for
   `plan`, which the API never sends, so every org looked like the free plan.
+- `organizations->create()` now returns `CreateOrganizationResponse` with the
+  organization and the one-time initial API key. It previously returned only
+  `Organization` and dropped `api_key`, so the key the API shows once was
+  discarded.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Spooled\Resources;
 
+use Spooled\Types\CreateOrganizationResponse;
 use Spooled\Types\Organization;
 use Spooled\Types\OrganizationList;
 use Spooled\Types\OrganizationMember;
@@ -18,16 +19,16 @@ final class OrganizationsResource extends BaseResource
     /**
      * Create a new organization (public endpoint, no auth required).
      *
+     * Returns the organization and the initial API key. The key is only
+     * shown once; save `$result->apiKey->key`.
+     *
      * @param array<string, mixed> $params {name, slug}
      */
-    public function create(array $params): Organization
+    public function create(array $params): CreateOrganizationResponse
     {
         $response = $this->httpClient->post('organizations', $params);
 
-        // Response might be wrapped in 'organization' key
-        $orgData = $response['organization'] ?? $response;
-
-        return Organization::fromArray($orgData);
+        return CreateOrganizationResponse::fromArray($response);
     }
 
     /**

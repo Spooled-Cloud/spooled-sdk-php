@@ -7,6 +7,7 @@ namespace Spooled\Tests\Unit\Types;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Spooled\Types\CreateOrganizationResponse;
 use Spooled\Types\Organization;
 
 #[CoversClass(Organization::class)]
@@ -27,5 +28,30 @@ final class OrganizationTest extends TestCase
 
         $this->assertSame('pro', $got->plan);
         $this->assertSame('bills@acme.test', $got->billingEmail);
+    }
+
+    #[Test]
+    public function create_response_keeps_the_one_time_api_key(): void
+    {
+        $got = CreateOrganizationResponse::fromArray([
+            'organization' => [
+                'id' => 'org_1',
+                'name' => 'Acme',
+                'slug' => 'acme',
+                'planTier' => 'free',
+                'createdAt' => '2024-01-01T00:00:00Z',
+                'updatedAt' => '2024-01-01T00:00:00Z',
+            ],
+            'apiKey' => [
+                'id' => 'key_1',
+                'key' => 'sp_live_abc123',
+                'name' => 'Default API Key',
+                'createdAt' => '2024-01-01T00:00:00Z',
+            ],
+        ]);
+
+        $this->assertSame('org_1', $got->organization->id);
+        $this->assertSame('sp_live_abc123', $got->apiKey->key);
+        $this->assertSame('key_1', $got->apiKey->id);
     }
 }

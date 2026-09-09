@@ -63,6 +63,61 @@ final readonly class Organization
 }
 
 /**
+ * Initial API key returned during organization creation (shown once).
+ */
+final readonly class InitialApiKey
+{
+    public function __construct(
+        public string $id,
+        public string $key,
+        public string $name,
+        public ?string $createdAt,
+    ) {
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            id: (string) ($data['id'] ?? ''),
+            key: (string) ($data['key'] ?? ''),
+            name: (string) ($data['name'] ?? ''),
+            createdAt: isset($data['createdAt']) ? (string) $data['createdAt'] : null,
+        );
+    }
+}
+
+/**
+ * POST /organizations response: the org plus the one-time initial API key.
+ */
+final readonly class CreateOrganizationResponse
+{
+    public function __construct(
+        public Organization $organization,
+        public InitialApiKey $apiKey,
+    ) {
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public static function fromArray(array $data): self
+    {
+        $orgData = is_array($data['organization'] ?? null) ? $data['organization'] : [];
+        $keyData = is_array($data['apiKey'] ?? null)
+            ? $data['apiKey']
+            : (is_array($data['api_key'] ?? null) ? $data['api_key'] : []);
+
+        return new self(
+            organization: Organization::fromArray($orgData),
+            apiKey: InitialApiKey::fromArray($keyData),
+        );
+    }
+}
+
+/**
  * Organization list response.
  */
 final readonly class OrganizationList
