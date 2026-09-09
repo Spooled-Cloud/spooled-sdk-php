@@ -25,5 +25,21 @@ final class QueueTest extends TestCase
 
         $this->assertSame('emails', $got->name);
         $this->assertFalse($got->paused);
+        $this->assertSame(300, $got->timeout);
+        $this->assertSame(5, $got->maxRetries);
+    }
+
+    #[Test]
+    public function from_array_derives_paused_from_enabled_when_list_omits_paused(): void
+    {
+        $got = Queue::fromArray([
+            'queueName' => 'emails',
+            'enabled' => false,
+            'maxRetries' => 3,
+            'defaultTimeout' => 60,
+        ]);
+
+        $this->assertTrue($got->paused);
+        $this->assertSame(60, $got->timeout);
     }
 }

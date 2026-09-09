@@ -19,3 +19,4 @@
 | PH-14 | P2 | ~~`checkSlug` looked for `suggestions`; API sends `suggestion`/`valid`/`error`~~ **FIXED** | `src/Resources/OrganizationsResource.php` |
 | PH-15 | P1 | ~~`Queue::$name` always empty (API sends `queue_name`)~~ **FIXED** | `src/Types/Queue.php` |
 | PH-16 | P1 | ~~`QueueStats` counts always 0 (API sends `pending_jobs` etc.)~~ **FIXED** | `src/Types/Queue.php` |
+| PH-17 | P1 | ~~`Queue::$timeout` always null; `$paused` ignored `enabled`~~ **FIXED** | `src/Types/Queue.php` |

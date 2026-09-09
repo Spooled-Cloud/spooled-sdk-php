@@ -29,14 +29,19 @@ final readonly class Queue
      */
     public static function fromArray(array $data): self
     {
+        $paused = array_key_exists('paused', $data)
+            ? (bool) $data['paused']
+            : (array_key_exists('enabled', $data) ? !(bool) $data['enabled'] : false);
+        $timeout = $data['timeout'] ?? $data['defaultTimeout'] ?? $data['default_timeout'] ?? null;
+
         return new self(
             name: (string) ($data['queueName'] ?? $data['queue_name'] ?? $data['name'] ?? ''),
-            paused: (bool) ($data['paused'] ?? false),
+            paused: $paused,
             organizationId: isset($data['organizationId']) ? (string) $data['organizationId'] : null,
             maxConcurrency: isset($data['maxConcurrency']) ? (int) $data['maxConcurrency'] : null,
             maxRetries: isset($data['maxRetries']) ? (int) $data['maxRetries'] : null,
             retryDelay: isset($data['retryDelay']) ? (int) $data['retryDelay'] : null,
-            timeout: isset($data['timeout']) ? (int) $data['timeout'] : null,
+            timeout: $timeout !== null ? (int) $timeout : null,
             createdAt: isset($data['createdAt']) ? (string) $data['createdAt'] : null,
             updatedAt: isset($data['updatedAt']) ? (string) $data['updatedAt'] : null,
         );

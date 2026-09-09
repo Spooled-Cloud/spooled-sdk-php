@@ -12,5 +12,5 @@
 - Organization JSON uses `plan_tier` (camelCase `planTier`), not `plan`. `GET /organizations/usage` is the exception: that body uses `plan`.
 - `POST /organizations` returns `{ organization, api_key }`. The key is shown once; `organizations->create()` returns `CreateOrganizationResponse`.
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `suggestions`.
-- Queue JSON uses `queue_name` (camelCase `queueName`), not `name`.
+- Queue JSON uses `queue_name` (camelCase `queueName`), not `name`. List/get send `enabled` and `default_timeout`; `paused` is on pause/get-info only.
 - Queue stats are `pending_jobs`, `processing_jobs`, `completed_jobs_24h`, `failed_jobs_24h`, `avg_processing_time_ms`, not `pending`/`claimed`/`completed`.
