@@ -237,6 +237,29 @@ final readonly class CreateJobParams
 }
 
 /**
+ * POST /jobs returns {id, created}, not a full Job.
+ */
+final readonly class CreateJobResult
+{
+    public function __construct(
+        public string $id,
+        public bool $created,
+    ) {
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            id: (string) ($data['id'] ?? ''),
+            created: array_key_exists('created', $data) ? (bool) $data['created'] : true,
+        );
+    }
+}
+
+/**
  * Job list response.
  */
 final readonly class JobList

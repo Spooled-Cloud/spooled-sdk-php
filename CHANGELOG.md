@@ -105,6 +105,7 @@ Tracks Spooled backend 0.1.111.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 **Breaking:** `webhooks->test()` now returns `TestWebhookResponse` instead of `WebhookDelivery`. The test endpoint never sent a delivery.
+**Breaking:** `jobs->create()` now returns `CreateJobResult` (`id`, `created`) instead of `Job`. `POST /jobs` only sends those two fields, so queue/status/payload on the old `Job` were always empty and the idempotency `created` flag was dropped. Use `createAndGet()` for a full `Job`.
 
 ### Removed
 

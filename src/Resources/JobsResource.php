@@ -9,6 +9,7 @@ use Spooled\Http\HttpClient;
 use Spooled\Types\BatchStatusResponse;
 use Spooled\Types\BulkEnqueueResponse;
 use Spooled\Types\ClaimJobsResult;
+use Spooled\Types\CreateJobResult;
 use Spooled\Types\Job;
 use Spooled\Types\JobList;
 use Spooled\Types\JobStats;
@@ -76,7 +77,7 @@ final class JobsResource extends BaseResource
      *
      * @param array<string, mixed> $params
      */
-    public function create(array $params): Job
+    public function create(array $params): CreateJobResult
     {
         // Map 'queue' to 'queueName' for API compatibility
         if (isset($params['queue']) && !isset($params['queueName'])) {
@@ -91,7 +92,7 @@ final class JobsResource extends BaseResource
 
         $response = $this->httpClient->post('jobs', $params);
 
-        return Job::fromArray($response);
+        return CreateJobResult::fromArray($response);
     }
 
     /**

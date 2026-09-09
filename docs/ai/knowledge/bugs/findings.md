@@ -30,3 +30,4 @@
 | PH-25 | P1 | ~~`workflows->create()` sent `queue`; API requires `queue_name` so documented creates 422~~ **FIXED** | `src/Resources/WorkflowsResource.php` |
 | PH-26 | P1 | ~~`workflows->create()` left `name` empty and `totalJobs` 0 (create body is workflowId/jobIds/status)~~ **FIXED** | `src/Resources/WorkflowsResource.php` |
 | PH-27 | P1 | ~~`WebhookToken` dropped `webhook_url` from GET/POST `/organizations/webhook-token`~~ **FIXED** | `src/Types/Organization.php` |
+| PH-28 | P1 | ~~`jobs->create()` mapped `{id, created}` onto `Job`, dropping `created` and leaving queue/status empty~~ **FIXED** | `src/Resources/JobsResource.php` |

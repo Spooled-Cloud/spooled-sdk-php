@@ -21,6 +21,7 @@ $job = $client->jobs->create([
 ]);
 
 echo "Job ID: {$job->id}\n";
+echo $job->created ? "new\n" : "idempotent hit\n";
 ```
 
 ### Create and Get (returns full job)

@@ -23,4 +23,5 @@
 - Webhook test is `POST /outgoing-webhooks/{id}/test` → `{ success, status_code, response_time_ms, error }`, not a delivery. `webhooks->test()` returns `TestWebhookResponse`.
 - Job list/DLQ summaries send `attempt` and `max_retries`, not `retry_count`. `Job::$retryCount` maps from `attempt`. Detail `GET /jobs/{id}` still uses `retry_count`.
 - Job detail sends `last_error` and `assigned_worker_id` (camelCase `lastError`/`assignedWorkerId`), not `error`/`workerId`.
+- `POST /jobs` returns `{ id, created }`. PHP `jobs->create()` returns `CreateJobResult`; `createAndGet()` fetches the full `Job`.
 - `GET /dashboard` job summary sends `completed_24h`, `failed_24h`, `avg_wait_time_ms`, `avg_processing_time_ms` (camelCase `completed24h`/`failed24h`/`avgWaitTimeMs`/`avgProcessingTimeMs`), not `completed`/`failed`/`avgWaitTimeMs` at the top level.
