@@ -58,7 +58,7 @@ final class AdminResource extends BaseResource
      */
     public function updateOrganization(string $orgId, array $params): Organization
     {
-        $response = $this->httpClient->put("admin/organizations/{$orgId}", $params, [], $this->getAdminHeaders());
+        $response = $this->httpClient->patch("admin/organizations/{$orgId}", $params, [], $this->getAdminHeaders());
 
         return Organization::fromArray($response);
     }
