@@ -21,3 +21,4 @@
 | PH-16 | P1 | ~~`QueueStats` counts always 0 (API sends `pending_jobs` etc.)~~ **FIXED** | `src/Types/Queue.php` |
 | PH-17 | P1 | ~~`Queue::$timeout` always null; `$paused` ignored `enabled`~~ **FIXED** | `src/Types/Queue.php` |
 | PH-18 | P1 | ~~`ApiKey::$active` always true; `$lastUsedAt` always null (API sends `is_active`/`last_used`)~~ **FIXED** | `src/Types/ApiKey.php` |
+| PH-19 | P1 | ~~`WebhookDelivery::$attemptNumber` always 1; `$response` always null (API sends `attempts`/`response_body`)~~ **FIXED** | `src/Types/Webhook.php` |

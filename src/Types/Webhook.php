@@ -161,10 +161,17 @@ final readonly class WebhookDelivery
             webhookId: (string) ($data['webhookId'] ?? ''),
             eventType: (string) ($data['eventType'] ?? $data['event'] ?? ''),
             status: (string) ($data['status'] ?? 'pending'),
-            statusCode: (int) ($data['statusCode'] ?? 0),
-            attemptNumber: (int) ($data['attemptNumber'] ?? $data['attempt'] ?? 1),
+            statusCode: (int) ($data['statusCode'] ?? $data['status_code'] ?? 0),
+            attemptNumber: (int) (
+                $data['attemptNumber']
+                ?? $data['attempts']
+                ?? $data['attempt']
+                ?? 1
+            ),
             payload: is_array($data['payload'] ?? null) ? $data['payload'] : [],
-            response: isset($data['response']) ? (string) $data['response'] : null,
+            response: isset($data['responseBody']) ? (string) $data['responseBody']
+                : (isset($data['response_body']) ? (string) $data['response_body']
+                : (isset($data['response']) ? (string) $data['response'] : null)),
             error: isset($data['error']) ? (string) $data['error'] : null,
             duration: isset($data['duration']) ? (float) $data['duration'] : null,
             createdAt: isset($data['createdAt']) ? (string) $data['createdAt'] : null,
