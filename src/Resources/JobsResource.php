@@ -137,12 +137,16 @@ final class JobsResource extends BaseResource
 
     /**
      * Cancel a pending or scheduled job.
+     *
+     * DELETE /jobs/{id} returns 204 with an empty body. Parsing that as a Job
+     * produced id="" and status="pending". The cancelled row still exists, so
+     * we fetch it.
      */
     public function cancel(string $jobId): Job
     {
-        $response = $this->httpClient->delete("jobs/{$jobId}");
+        $this->httpClient->delete("jobs/{$jobId}");
 
-        return Job::fromArray($response);
+        return $this->get($jobId);
     }
 
     /**

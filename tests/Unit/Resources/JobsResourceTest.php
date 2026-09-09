@@ -33,4 +33,29 @@ final class JobsResourceTest extends TestCase
         $this->assertSame('job_1', $got->id);
         $this->assertFalse($got->created);
     }
+
+    #[Test]
+    public function cancel_does_not_treat_204_empty_body_as_a_pending_job(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('delete')
+            ->with('jobs/job_1')
+            ->willReturn([]);
+        $httpClient->expects($this->once())
+            ->method('get')
+            ->with('jobs/job_1')
+            ->willReturn([
+                'id' => 'job_1',
+                'queueName' => 'emails',
+                'status' => 'cancelled',
+                'payload' => ['n' => 1],
+            ]);
+
+        $got = (new JobsResource($httpClient))->cancel('job_1');
+
+        $this->assertSame('job_1', $got->id);
+        $this->assertSame('cancelled', $got->status);
+        $this->assertSame('emails', $got->queueName);
+    }
 }
