@@ -101,6 +101,21 @@ final class JobTest extends TestCase
     }
 
     #[Test]
+    public function from_array_reads_last_error_and_assigned_worker_id(): void
+    {
+        $job = Job::fromArray([
+            'id' => 'job_1',
+            'queueName' => 'emails',
+            'status' => 'failed',
+            'lastError' => 'connection refused',
+            'assignedWorkerId' => 'w_9',
+        ]);
+
+        $this->assertSame('connection refused', $job->error);
+        $this->assertSame('w_9', $job->workerId);
+    }
+
+    #[Test]
     public function it_converts_job_to_array(): void
     {
         $data = [

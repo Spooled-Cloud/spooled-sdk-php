@@ -86,6 +86,9 @@ Tracks Spooled backend 0.1.111.
 - `Job::$retryCount` now maps `attempt` from `GET /jobs` and `GET /jobs/dlq`.
   Those list bodies send `attempt`, not `retryCount`, so every listed job
   looked like it had never been retried.
+- `Job::$error` and `$workerId` now map `lastError` and `assignedWorkerId`
+  from `GET /jobs/{id}`. Those fields were never sent as `error`/`workerId`,
+  so a failed job looked like it had no error and no worker.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 **Breaking:** `webhooks->test()` now returns `TestWebhookResponse` instead of `WebhookDelivery`. The test endpoint never sent a delivery.

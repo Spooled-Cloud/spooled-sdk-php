@@ -73,13 +73,17 @@ final readonly class Job
             priority: (int) ($data['priority'] ?? 0),
             retryCount: (int) ($data['retryCount'] ?? $data['retry_count'] ?? $data['attempt'] ?? 0),
             maxRetries: (int) ($data['maxRetries'] ?? $data['max_retries'] ?? 3),
-            workerId: isset($data['workerId']) ? (string) $data['workerId'] : null,
+            workerId: isset($data['workerId']) ? (string) $data['workerId']
+                : (isset($data['assignedWorkerId']) ? (string) $data['assignedWorkerId']
+                : (isset($data['assigned_worker_id']) ? (string) $data['assigned_worker_id'] : null)),
             workerName: isset($data['workerName']) ? (string) $data['workerName'] : null,
             scheduleId: isset($data['scheduleId']) ? (string) $data['scheduleId'] : null,
             workflowId: isset($data['workflowId']) ? (string) $data['workflowId'] : null,
             parentJobId: isset($data['parentJobId']) ? (string) $data['parentJobId'] : null,
             organizationId: isset($data['organizationId']) ? (string) $data['organizationId'] : null,
-            error: isset($data['error']) ? (string) $data['error'] : null,
+            error: isset($data['error']) ? (string) $data['error']
+                : (isset($data['lastError']) ? (string) $data['lastError']
+                : (isset($data['last_error']) ? (string) $data['last_error'] : null)),
             result: is_array($data['result'] ?? null) ? $data['result'] : null,
             tags: isset($data['tags']) && is_array($data['tags']) ? $data['tags'] : null,
             metadata: is_array($data['metadata'] ?? null) ? $data['metadata'] : null,
