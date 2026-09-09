@@ -213,11 +213,18 @@ final class AdminResource extends BaseResource
     }
 
     /**
-     * Purge all jobs in a queue (admin).
+     * Delete a queue and all of its jobs.
+     *
+     * There is no `POST /admin/queues/{name}/purge`. The backend contract is
+     * `DELETE /queues/{name}?delete_jobs=true`.
      */
     public function purgeQueue(string $queueName): SuccessResponse
     {
-        $response = $this->httpClient->post("admin/queues/{$queueName}/purge", null, [], $this->getAdminHeaders());
+        $response = $this->httpClient->delete(
+            "queues/{$queueName}",
+            ['delete_jobs' => 'true'],
+            $this->getAdminHeaders(),
+        );
 
         return SuccessResponse::fromArray($response);
     }

@@ -82,4 +82,23 @@ final class AdminResourceTest extends TestCase
 
         $this->assertSame('org_1', $got->id);
     }
+
+    #[Test]
+    public function purge_queue_uses_delete_jobs_query_not_a_missing_post_route(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('delete')
+            ->with(
+                'queues/emails',
+                ['delete_jobs' => 'true'],
+                ['X-Admin-Key' => 'adminkey'],
+            )
+            ->willReturn([]);
+        $httpClient->expects($this->never())->method('post');
+
+        $got = (new AdminResource($httpClient, 'adminkey'))->purgeQueue('emails');
+
+        $this->assertTrue($got->success);
+    }
 }

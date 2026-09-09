@@ -22,6 +22,7 @@
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `suggestions`.
 - Queue JSON uses `queue_name` (camelCase `queueName`), not `name`. List/get send `enabled` and `default_timeout`; `paused` is on pause/get-info only.
 - There is no `POST /queues/{name}/purge`. PHP `queues->purge()` is `DELETE /queues/{name}?delete_jobs=true` (drops jobs and the config row). `delete($name)` omits the flag.
+- There is no `POST /admin/queues/{name}/purge`. PHP `admin->purgeQueue()` is the same `DELETE /queues/{name}?delete_jobs=true`.
 - Queue stats are `pending_jobs`, `processing_jobs`, `completed_jobs_24h`, `failed_jobs_24h`, `avg_processing_time_ms`, not `pending`/`claimed`/`completed`.
 - API key JSON uses `is_active` (camelCase `isActive`) and `last_used` (`lastUsed`), not `active`/`lastUsedAt`. List/get never send `prefix`; create returns `key` once.
 - Outgoing webhook delivery JSON uses `event`, `attempts`, and `response_body` (camelCase `responseBody`), not `eventType`/`attemptNumber`/`response`.

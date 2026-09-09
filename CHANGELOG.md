@@ -45,6 +45,9 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `admin->purgeQueue()` now sends `DELETE /queues/{name}?delete_jobs=true`.
+  It previously POSTed `/admin/queues/{name}/purge`, which is not a backend
+  route, so every purge 404'd.
 - `auth->checkEmail()` now maps `available` and `signupEnabled` from
   `GET /auth/check-email`. It previously read `canRegister` (never sent) and
   defaulted it to true, so a closed signup still looked open.
