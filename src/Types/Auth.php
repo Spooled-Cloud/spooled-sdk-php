@@ -73,14 +73,15 @@ final readonly class User
 }
 
 /**
- * Email login start response.
+ * Email login start response (POST /auth/email/start).
  */
 final readonly class EmailLoginStartResponse
 {
     public function __construct(
         public bool $success,
         public ?string $message,
-        public ?int $codeExpiresIn,
+        public ?int $codeExpiresIn = null,
+        public ?string $emailSentTo = null,
     ) {
     }
 
@@ -91,10 +92,14 @@ final readonly class EmailLoginStartResponse
      */
     public static function fromArray(array $data): self
     {
+        $emailSentTo = $data['emailSentTo'] ?? $data['email_sent_to'] ?? null;
+        $expires = $data['codeExpiresIn'] ?? $data['code_expires_in'] ?? null;
+
         return new self(
-            success: (bool) ($data['success'] ?? true),
+            success: array_key_exists('success', $data) ? (bool) $data['success'] : true,
             message: isset($data['message']) ? (string) $data['message'] : null,
-            codeExpiresIn: isset($data['codeExpiresIn']) ? (int) $data['codeExpiresIn'] : null,
+            codeExpiresIn: $expires !== null ? (int) $expires : null,
+            emailSentTo: is_string($emailSentTo) ? $emailSentTo : null,
         );
     }
 }

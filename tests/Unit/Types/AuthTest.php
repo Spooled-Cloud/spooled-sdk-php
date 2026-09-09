@@ -8,8 +8,10 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Spooled\Types\EmailCheckResponse;
+use Spooled\Types\EmailLoginStartResponse;
 
 #[CoversClass(EmailCheckResponse::class)]
+#[CoversClass(EmailLoginStartResponse::class)]
 final class AuthTest extends TestCase
 {
     #[Test]
@@ -40,5 +42,19 @@ final class AuthTest extends TestCase
         $this->assertFalse($got->available);
         $this->assertTrue($got->signupEnabled);
         $this->assertFalse($got->canRegister);
+    }
+
+    #[Test]
+    public function email_start_maps_email_sent_to(): void
+    {
+        $got = EmailLoginStartResponse::fromArray([
+            'message' => 'Login code sent to your email',
+            'emailSentTo' => 'n***@example.com',
+        ]);
+
+        $this->assertSame('Login code sent to your email', $got->message);
+        $this->assertSame('n***@example.com', $got->emailSentTo);
+        $this->assertTrue($got->success);
+        $this->assertNull($got->codeExpiresIn);
     }
 }
