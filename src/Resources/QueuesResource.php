@@ -84,22 +84,27 @@ final class QueuesResource extends BaseResource
     }
 
     /**
-     * Delete a queue.
+     * Delete a queue configuration.
+     *
+     * Without `$deleteJobs` this 409s while pending/processing jobs exist.
+     * With `$deleteJobs` the API also deletes every job in the queue.
      */
-    public function delete(string $name): SuccessResponse
+    public function delete(string $name, bool $deleteJobs = false): SuccessResponse
     {
-        $response = $this->httpClient->delete("queues/{$name}");
+        $query = $deleteJobs ? ['delete_jobs' => 'true'] : [];
+        $response = $this->httpClient->delete("queues/{$name}", $query);
 
         return SuccessResponse::fromArray($response);
     }
 
     /**
-     * Purge all jobs from a queue.
+     * Delete a queue and all of its jobs.
+     *
+     * There is no `POST /queues/{name}/purge`. The backend contract is
+     * `DELETE /queues/{name}?delete_jobs=true`.
      */
     public function purge(string $name): SuccessResponse
     {
-        $response = $this->httpClient->post("queues/{$name}/purge");
-
-        return SuccessResponse::fromArray($response);
+        return $this->delete($name, true);
     }
 }
