@@ -124,23 +124,27 @@ final class AdminResource extends BaseResource
     }
 
     /**
-     * List all workers (admin).
+     * List workers.
+     *
+     * There is no `GET /admin/workers`. The backend contract is `GET /workers`.
      *
      * @param array<string, mixed> $params
      */
     public function listWorkers(array $params = []): WorkerList
     {
-        $response = $this->httpClient->get('admin/workers', $params, $this->getAdminHeaders());
+        $response = $this->httpClient->get('workers', $params, $this->getAdminHeaders());
 
         return WorkerList::fromArray($response);
     }
 
     /**
-     * Get a worker (admin).
+     * Get a worker by ID.
+     *
+     * There is no `GET /admin/workers/{id}`. The backend contract is `GET /workers/{id}`.
      */
     public function getWorker(string $workerId): Worker
     {
-        $response = $this->httpClient->get("admin/workers/{$workerId}", [], $this->getAdminHeaders());
+        $response = $this->httpClient->get("workers/{$workerId}", [], $this->getAdminHeaders());
 
         return Worker::fromArray($response);
     }
