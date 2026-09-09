@@ -43,3 +43,4 @@
 | PH-38 | P1 | ~~`admin->listQueues()` called `/admin/queues` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /queues` |
 | PH-39 | P1 | ~~`admin->listSchedules()` called `/admin/schedules` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /schedules` |
 | PH-40 | P1 | ~~`admin->listWorkflows()` called `/admin/workflows` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /workflows` |
+| PH-41 | P1 | ~~`ApiKey::$scopes` always null (API sends `queues`)~~ **FIXED** | `src/Types/ApiKey.php`; list/get `queues` (empty = all) |

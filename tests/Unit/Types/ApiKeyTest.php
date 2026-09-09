@@ -42,4 +42,18 @@ final class ApiKeyTest extends TestCase
         $this->assertTrue($got->active);
         $this->assertNull($got->lastUsedAt);
     }
+
+    #[Test]
+    public function from_array_reads_queues_onto_scopes(): void
+    {
+        $got = ApiKey::fromArray([
+            'id' => 'key_3',
+            'name' => 'Worker',
+            'isActive' => true,
+            'queues' => ['emails', 'reports'],
+            'createdAt' => '2024-01-01T00:00:00Z',
+        ]);
+
+        $this->assertSame(['emails', 'reports'], $got->scopes);
+    }
 }

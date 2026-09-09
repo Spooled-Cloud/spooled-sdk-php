@@ -45,6 +45,8 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `ApiKey::$scopes` now maps `queues` from list/get. The API never sends
+  `scopes`, so a queue-restricted key previously looked unrestricted.
 - `admin->listWorkflows()` now calls `GET /workflows`. It previously requested
   `/admin/workflows`, which is not a backend route, so every list 404'd.
 - `admin->listSchedules()` now calls `GET /schedules`. It previously requested

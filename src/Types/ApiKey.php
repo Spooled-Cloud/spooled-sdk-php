@@ -47,7 +47,8 @@ final readonly class ApiKey
             key: isset($data['key']) ? (string) $data['key'] : null,
             active: (bool) ($data['active'] ?? $data['isActive'] ?? $data['is_active'] ?? true),
             organizationId: isset($data['organizationId']) ? (string) $data['organizationId'] : null,
-            scopes: isset($data['scopes']) && is_array($data['scopes']) ? $data['scopes'] : null,
+            // List/get send `queues` (empty = all). `scopes` is not an API field.
+            scopes: self::stringList($data['queues'] ?? $data['scopes'] ?? null),
             expiresAt: isset($data['expiresAt']) ? (string) $data['expiresAt'] : null,
             lastUsedAt: isset($data['lastUsedAt']) ? (string) $data['lastUsedAt']
                 : (isset($data['lastUsed']) ? (string) $data['lastUsed']
@@ -55,6 +56,25 @@ final readonly class ApiKey
             createdAt: isset($data['createdAt']) ? (string) $data['createdAt'] : null,
             updatedAt: isset($data['updatedAt']) ? (string) $data['updatedAt'] : null,
         );
+    }
+
+    /**
+     * @return array<string>|null
+     */
+    private static function stringList(mixed $value): ?array
+    {
+        if (!is_array($value)) {
+            return null;
+        }
+
+        $out = [];
+        foreach ($value as $item) {
+            if (is_string($item) && $item !== '') {
+                $out[] = $item;
+            }
+        }
+
+        return $out;
     }
 }
 
