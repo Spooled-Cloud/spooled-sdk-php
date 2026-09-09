@@ -75,6 +75,10 @@ Tracks Spooled backend 0.1.111.
 - `WebhookDelivery` now reads `attempts` and `responseBody`. It previously
   looked for `attemptNumber`/`attempt` and `response`, which deliveries
   never send, so every delivery looked like attempt 1 with an empty body.
+- `schedules->history()` now parses the raw array from
+  `GET /schedules/{id}/history` and maps `errorMessage`/`startedAt`. It
+  previously looked for a `history` wrapper and `error`/`executedAt`, so
+  history was always empty and a run's error and time were always null.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 

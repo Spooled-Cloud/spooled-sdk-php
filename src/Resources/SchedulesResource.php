@@ -124,7 +124,9 @@ final class SchedulesResource extends BaseResource
     public function history(string $scheduleId, array $params = []): array
     {
         $response = $this->httpClient->get("schedules/{$scheduleId}/history", $params);
-        $entries = $response['history'] ?? $response['data'] ?? [];
+        // GET /schedules/{id}/history returns a raw array, not {history: [...]}.
+        $isRawArray = isset($response[0]) && is_array($response[0]);
+        $entries = $isRawArray ? $response : ($response['history'] ?? $response['data'] ?? []);
 
         return array_map(
             fn (array $item) => ScheduleHistoryEntry::fromArray($item),

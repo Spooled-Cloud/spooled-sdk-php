@@ -185,4 +185,28 @@ final class SchedulesResourceTest extends TestCase
         $this->assertSame(['type' => 'daily'], $schedule->payload);
         $this->assertSame('0 9 * * *', $schedule->schedule);
     }
+
+    #[Test]
+    public function history_parses_a_bare_top_level_array(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->method('get')->willReturn([
+            [
+                'id' => 'run_1',
+                'scheduleId' => 'sch_1',
+                'jobId' => 'job_1',
+                'status' => 'failed',
+                'errorMessage' => 'cron parse error',
+                'startedAt' => '2024-01-01T00:00:00Z',
+            ],
+        ]);
+
+        $resource = new SchedulesResource($httpClient);
+        $history = $resource->history('sch_1');
+
+        $this->assertCount(1, $history);
+        $this->assertSame('run_1', $history[0]->id);
+        $this->assertSame('cron parse error', $history[0]->error);
+        $this->assertSame('2024-01-01T00:00:00Z', $history[0]->executedAt);
+    }
 }

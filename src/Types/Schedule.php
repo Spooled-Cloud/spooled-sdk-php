@@ -143,11 +143,16 @@ final readonly class ScheduleHistoryEntry
     {
         return new self(
             id: (string) ($data['id'] ?? ''),
-            scheduleId: (string) ($data['scheduleId'] ?? ''),
+            scheduleId: (string) ($data['scheduleId'] ?? $data['schedule_id'] ?? ''),
             status: (string) ($data['status'] ?? ''),
-            jobId: isset($data['jobId']) ? (string) $data['jobId'] : null,
-            error: isset($data['error']) ? (string) $data['error'] : null,
-            executedAt: isset($data['executedAt']) ? (string) $data['executedAt'] : null,
+            jobId: isset($data['jobId']) ? (string) $data['jobId']
+                : (isset($data['job_id']) ? (string) $data['job_id'] : null),
+            error: isset($data['errorMessage']) ? (string) $data['errorMessage']
+                : (isset($data['error_message']) ? (string) $data['error_message']
+                : (isset($data['error']) ? (string) $data['error'] : null)),
+            executedAt: isset($data['executedAt']) ? (string) $data['executedAt']
+                : (isset($data['startedAt']) ? (string) $data['startedAt']
+                : (isset($data['started_at']) ? (string) $data['started_at'] : null)),
             duration: isset($data['duration']) ? (float) $data['duration'] : null,
         );
     }

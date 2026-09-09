@@ -22,3 +22,4 @@
 | PH-17 | P1 | ~~`Queue::$timeout` always null; `$paused` ignored `enabled`~~ **FIXED** | `src/Types/Queue.php` |
 | PH-18 | P1 | ~~`ApiKey::$active` always true; `$lastUsedAt` always null (API sends `is_active`/`last_used`)~~ **FIXED** | `src/Types/ApiKey.php` |
 | PH-19 | P1 | ~~`WebhookDelivery::$attemptNumber` always 1; `$response` always null (API sends `attempts`/`response_body`)~~ **FIXED** | `src/Types/Webhook.php` |
+| PH-20 | P1 | ~~`schedules->history()` always empty; entries dropped `error_message`/`started_at`~~ **FIXED** | `src/Resources/SchedulesResource.php`; `src/Types/Schedule.php` |
