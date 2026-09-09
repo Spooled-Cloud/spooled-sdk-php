@@ -26,3 +26,4 @@
 | PH-21 | P1 | ~~`webhooks->test()` mapped probe `{success,status_code,response_time_ms}` onto `WebhookDelivery`~~ **FIXED** | `src/Resources/WebhooksResource.php`; `src/Types/Webhook.php` |
 | PH-22 | P1 | ~~`Job::$retryCount` always 0 on list/DLQ (API sends `attempt`)~~ **FIXED** | `src/Types/Job.php` |
 | PH-23 | P1 | ~~`Job::$error`/`$workerId` always null on get (API sends `last_error`/`assigned_worker_id`)~~ **FIXED** | `src/Types/Job.php` |
+| PH-24 | P1 | ~~`DashboardStats` 24h counts and averages always 0 (API sends `completed_24h`/`avg_wait_time_ms`, camelCased)~~ **FIXED** | `src/Types/Common.php` |

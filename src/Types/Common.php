@@ -78,25 +78,27 @@ final readonly class DashboardStats
      */
     public static function fromArray(array $data): self
     {
-        $jobs = $data['jobs'] ?? [];
-        $workers = $data['workers'] ?? [];
+        $jobs = is_array($data['jobs'] ?? null) ? $data['jobs'] : [];
+        $workers = is_array($data['workers'] ?? null) ? $data['workers'] : [];
         $system = $data['system'] ?? [];
-        $recentActivity = $data['recent_activity'] ?? $data['recentActivity'] ?? [];
+        $recentActivity = $data['recentActivity'] ?? $data['recent_activity'] ?? [];
 
         return new self(
             totalJobs: (int) ($jobs['total'] ?? $data['totalJobs'] ?? 0),
             pendingJobs: (int) ($jobs['pending'] ?? $data['pendingJobs'] ?? 0),
             processingJobs: (int) ($jobs['processing'] ?? $data['processingJobs'] ?? 0),
-            completedJobs: (int) ($jobs['completed_24h'] ?? $data['completedJobs'] ?? 0),
-            failedJobs: (int) ($jobs['failed_24h'] ?? $data['failedJobs'] ?? 0),
+            // GET /dashboard JobSummaryStats is completed_24h / failed_24h
+            // (camelCased completed24h / failed24h), not completed/failed.
+            completedJobs: (int) ($jobs['completed24h'] ?? $jobs['completed_24h'] ?? $data['completedJobs'] ?? 0),
+            failedJobs: (int) ($jobs['failed24h'] ?? $jobs['failed_24h'] ?? $data['failedJobs'] ?? 0),
             deadLetterJobs: (int) ($jobs['deadletter'] ?? $data['deadLetterJobs'] ?? 0),
             totalWorkers: (int) ($workers['total'] ?? $data['totalWorkers'] ?? 0),
             healthyWorkers: (int) ($workers['healthy'] ?? $data['healthyWorkers'] ?? 0),
             queues: is_array($data['queues'] ?? null) ? $data['queues'] : [],
             system: is_array($system) ? $system : [],
             recentActivity: is_array($recentActivity) ? $recentActivity : [],
-            avgWaitTimeMs: (float) ($jobs['avg_wait_time_ms'] ?? $data['avgWaitTimeMs'] ?? 0.0),
-            avgProcessingTimeMs: (float) ($jobs['avg_processing_time_ms'] ?? $data['avgProcessingTimeMs'] ?? 0.0),
+            avgWaitTimeMs: (float) ($jobs['avgWaitTimeMs'] ?? $jobs['avg_wait_time_ms'] ?? $data['avgWaitTimeMs'] ?? 0.0),
+            avgProcessingTimeMs: (float) ($jobs['avgProcessingTimeMs'] ?? $jobs['avg_processing_time_ms'] ?? $data['avgProcessingTimeMs'] ?? 0.0),
         );
     }
 
