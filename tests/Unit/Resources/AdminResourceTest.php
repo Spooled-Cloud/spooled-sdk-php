@@ -38,4 +38,23 @@ final class AdminResourceTest extends TestCase
         $this->assertSame('org_1', $got->id);
         $this->assertSame('enterprise', $got->plan);
     }
+
+    #[Test]
+    public function delete_organization_sends_hard_delete_query(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('delete')
+            ->with(
+                'admin/organizations/org_1',
+                ['hard_delete' => 'true'],
+                ['X-Admin-Key' => 'adminkey'],
+            )
+            ->willReturn([]);
+
+        $got = (new AdminResource($httpClient, 'adminkey'))
+            ->deleteOrganization('org_1', true);
+
+        $this->assertTrue($got->success);
+    }
 }

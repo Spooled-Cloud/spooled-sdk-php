@@ -65,10 +65,18 @@ final class AdminResource extends BaseResource
 
     /**
      * Delete an organization (admin).
+     *
+     * Soft-delete by default. `$hardDelete` sends `?hard_delete=true`, which
+     * permanently removes the org and its data. `?hard=true` is ignored.
      */
-    public function deleteOrganization(string $orgId): SuccessResponse
+    public function deleteOrganization(string $orgId, bool $hardDelete = false): SuccessResponse
     {
-        $response = $this->httpClient->delete("admin/organizations/{$orgId}", [], $this->getAdminHeaders());
+        $query = $hardDelete ? ['hard_delete' => 'true'] : [];
+        $response = $this->httpClient->delete(
+            "admin/organizations/{$orgId}",
+            $query,
+            $this->getAdminHeaders(),
+        );
 
         return SuccessResponse::fromArray($response);
     }
