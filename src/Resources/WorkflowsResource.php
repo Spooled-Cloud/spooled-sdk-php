@@ -49,6 +49,7 @@ final class WorkflowsResource extends BaseResource
         $params = $this->mapWriteParams($params);
 
         $response = $this->httpClient->post('workflows', $params);
+        $response = $this->applyCreateFallbacks($response, $params);
 
         return Workflow::fromArray($response);
     }
@@ -129,6 +130,33 @@ final class WorkflowsResource extends BaseResource
         }
 
         return $params;
+    }
+
+    /**
+     * POST /workflows returns {workflowId, jobIds, status} and never echoes
+     * name or totalJobs. Backfill from the request so create() matches get().
+     *
+     * @param array<string, mixed> $response
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     */
+    private function applyCreateFallbacks(array $response, array $params): array
+    {
+        foreach (['name', 'description', 'metadata'] as $key) {
+            if (!array_key_exists($key, $response) && array_key_exists($key, $params)) {
+                $response[$key] = $params[$key];
+            }
+        }
+
+        if (!isset($response['totalJobs']) && !isset($response['total_jobs'])) {
+            $jobIds = $response['jobIds'] ?? $response['job_ids'] ?? null;
+            $jobs = $params['jobs'] ?? null;
+            $response['totalJobs'] = is_array($jobIds)
+                ? count($jobIds)
+                : (is_array($jobs) ? count($jobs) : 0);
+        }
+
+        return $response;
     }
 }
 

@@ -69,7 +69,7 @@ final readonly class Workflow
                 : (isset($data['organizationId']) ? (string) $data['organizationId'] : null),
             description: isset($data['description']) ? (string) $data['description'] : null,
             metadata: is_array($data['metadata'] ?? null) ? $data['metadata'] : null,
-            totalJobs: (int) ($data['total_jobs'] ?? $data['totalJobs'] ?? 0),
+            totalJobs: (int) ($data['total_jobs'] ?? $data['totalJobs'] ?? (is_array($jobs) ? count($jobs) : 0)),
             completedJobs: (int) ($data['completed_jobs'] ?? $data['completedJobs'] ?? 0),
             failedJobs: (int) ($data['failed_jobs'] ?? $data['failedJobs'] ?? 0),
             createdAt: isset($data['created_at']) ? (string) $data['created_at']

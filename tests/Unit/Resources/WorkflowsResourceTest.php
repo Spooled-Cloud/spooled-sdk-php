@@ -36,7 +36,7 @@ final class WorkflowsResourceTest extends TestCase
             },
         );
 
-        (new WorkflowsResource($httpClient))->create([
+        $workflow = (new WorkflowsResource($httpClient))->create([
             'name' => 'ETL Pipeline',
             'jobs' => [
                 ['key' => 'extract', 'queue' => 'etl', 'payload' => ['step' => 'extract']],
@@ -55,6 +55,9 @@ final class WorkflowsResourceTest extends TestCase
         $this->assertSame('etl', $body['jobs'][0]['queue_name']);
         $this->assertArrayNotHasKey('queue', $body['jobs'][0]);
         $this->assertSame(['extract'], $body['jobs'][1]['depends_on']);
+        $this->assertSame('ETL Pipeline', $workflow->name);
+        $this->assertSame(2, $workflow->totalJobs);
+        $this->assertSame('wf_1', $workflow->id);
     }
 
     #[Test]
