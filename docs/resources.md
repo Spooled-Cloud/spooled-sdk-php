@@ -620,11 +620,12 @@ $result = $client->auth->refresh($refreshToken);
 $newAccessToken = $result->accessToken;
 ```
 
-### Get Current User
+### Get Current Session
 
 ```php
-$user = $client->auth->me(); // Requires JWT token
-echo "Organization: {$user->organizationId}\n";
+$me = $client->auth->me(); // Requires JWT token
+echo "Organization: {$me->organizationId}\n";
+echo "API key: {$me->apiKeyId}\n";
 ```
 
 ### Logout

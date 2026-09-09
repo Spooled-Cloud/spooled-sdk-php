@@ -7,9 +7,11 @@ namespace Spooled\Tests\Unit\Types;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Spooled\Types\CurrentUserResponse;
 use Spooled\Types\EmailCheckResponse;
 use Spooled\Types\EmailLoginStartResponse;
 
+#[CoversClass(CurrentUserResponse::class)]
 #[CoversClass(EmailCheckResponse::class)]
 #[CoversClass(EmailLoginStartResponse::class)]
 final class AuthTest extends TestCase
@@ -56,5 +58,29 @@ final class AuthTest extends TestCase
         $this->assertSame('n***@example.com', $got->emailSentTo);
         $this->assertTrue($got->success);
         $this->assertNull($got->codeExpiresIn);
+    }
+
+    #[Test]
+    public function me_maps_session_fields_not_an_email_user(): void
+    {
+        $got = CurrentUserResponse::fromArray([
+            'organizationId' => 'org_1',
+            'apiKeyId' => 'key_1',
+            'queues' => ['emails'],
+            'issuedAt' => '2024-01-01T00:00:00Z',
+            'expiresAt' => '2024-01-01T01:00:00Z',
+            'organization' => [
+                'id' => 'org_1',
+                'name' => 'Acme',
+                'slug' => 'acme',
+                'planTier' => 'pro',
+            ],
+        ]);
+
+        $this->assertSame('org_1', $got->organizationId);
+        $this->assertSame('key_1', $got->apiKeyId);
+        $this->assertSame(['emails'], $got->queues);
+        $this->assertSame('2024-01-01T00:00:00Z', $got->issuedAt);
+        $this->assertSame('pro', $got->organization?->plan);
     }
 }

@@ -45,6 +45,9 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `auth->me()` now returns `CurrentUserResponse` (`organizationId`, `apiKeyId`,
+  `queues`, timestamps). It previously mapped GET /auth/me onto `User`, so
+  `id`/`email` were always empty; the API never sends those fields.
 - `ApiKey::$scopes` now maps `queues` from list/get. The API never sends
   `scopes`, so a queue-restricted key previously looked unrestricted.
 - `admin->listWorkflows()` now calls `GET /workflows`. It previously requested

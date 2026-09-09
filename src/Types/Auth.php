@@ -73,6 +73,59 @@ final readonly class User
 }
 
 /**
+ * GET /auth/me — JWT session, not an email/password user.
+ *
+ * The API sends organization_id, api_key_id, queues, issued_at, expires_at,
+ * and optional organization. It never sends id/email/name.
+ */
+final readonly class CurrentUserResponse
+{
+    /**
+     * @param array<string> $queues
+     */
+    public function __construct(
+        public string $organizationId,
+        public string $apiKeyId,
+        public array $queues,
+        public ?string $issuedAt,
+        public ?string $expiresAt,
+        public ?Organization $organization = null,
+    ) {
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public static function fromArray(array $data): self
+    {
+        $queues = $data['queues'] ?? [];
+        $queueList = [];
+        if (is_array($queues)) {
+            foreach ($queues as $item) {
+                if (is_string($item) && $item !== '') {
+                    $queueList[] = $item;
+                }
+            }
+        }
+
+        $org = is_array($data['organization'] ?? null)
+            ? Organization::fromArray($data['organization'])
+            : null;
+
+        return new self(
+            organizationId: (string) ($data['organizationId'] ?? $data['organization_id'] ?? ''),
+            apiKeyId: (string) ($data['apiKeyId'] ?? $data['api_key_id'] ?? ''),
+            queues: $queueList,
+            issuedAt: isset($data['issuedAt']) ? (string) $data['issuedAt']
+                : (isset($data['issued_at']) ? (string) $data['issued_at'] : null),
+            expiresAt: isset($data['expiresAt']) ? (string) $data['expiresAt']
+                : (isset($data['expires_at']) ? (string) $data['expires_at'] : null),
+            organization: $org,
+        );
+    }
+}
+
+/**
  * Email login start response (POST /auth/email/start).
  */
 final readonly class EmailLoginStartResponse

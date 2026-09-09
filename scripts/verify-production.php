@@ -101,8 +101,8 @@ try {
 echo 'Getting user info... ';
 
 try {
-    $user = $client->auth->me();
-    echo "✅ {$user->email}\n";
+    $me = $client->auth->me();
+    echo "✅ {$me->organizationId}\n";
 } catch (\Throwable $e) {
     echo "❌ Failed: {$e->getMessage()}\n";
 }

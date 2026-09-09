@@ -39,3 +39,4 @@
 {"id":"PH-39","sev":"P1","summary":"admin listSchedules called /admin/schedules which 404s","path":"src/Resources/AdminResource.php","status":"fixed","note":"There is no admin schedules list route; GET /schedules is the backend contract"}
 {"id":"PH-40","sev":"P1","summary":"admin listWorkflows called /admin/workflows which 404s","path":"src/Resources/AdminResource.php","status":"fixed","note":"There is no admin workflows list route; GET /workflows is the backend contract"}
 {"id":"PH-41","sev":"P1","summary":"ApiKey scopes always null because list/get send queues not scopes","path":"src/Types/ApiKey.php","status":"fixed","note":"ApiKeySummary.queues is the allowlist (empty = all); scopes is not an API field"}
+{"id":"PH-42","sev":"P1","summary":"auth me mapped GET /auth/me onto User so id and email were always empty","path":"src/Types/Auth.php","status":"fixed","note":"CurrentUserResponse maps organization_id api_key_id queues issued_at expires_at organization"}

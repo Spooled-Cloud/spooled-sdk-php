@@ -6,11 +6,11 @@ namespace Spooled\Resources;
 
 use InvalidArgumentException;
 use Spooled\Types\AuthTokens;
+use Spooled\Types\CurrentUserResponse;
 use Spooled\Types\EmailCheckResponse;
 use Spooled\Types\EmailLoginStartResponse;
 use Spooled\Types\SuccessResponse;
 use Spooled\Types\TokenValidation;
-use Spooled\Types\User;
 
 /**
  * Auth resource for authentication operations.
@@ -52,13 +52,15 @@ final class AuthResource extends BaseResource
     }
 
     /**
-     * Get current user information.
+     * Get the current JWT session (GET /auth/me).
+     *
+     * The body is organization_id / api_key_id / queues, not an email user.
      */
-    public function me(): User
+    public function me(): CurrentUserResponse
     {
         $response = $this->httpClient->get('auth/me');
 
-        return User::fromArray($response);
+        return CurrentUserResponse::fromArray($response);
     }
 
     /**
