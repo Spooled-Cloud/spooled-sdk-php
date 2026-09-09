@@ -69,6 +69,9 @@ Tracks Spooled backend 0.1.111.
 - `Queue` now reads `defaultTimeout` and derives `paused` from `enabled` when
   `paused` is absent. List/get send those fields, so timeout was always null
   and a disabled queue looked unpaused.
+- `ApiKey` now reads `isActive` and `lastUsed`. It previously looked for
+  `active` and `lastUsedAt`, which list/get never send, so a revoked key
+  looked active and last-used was always null.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 

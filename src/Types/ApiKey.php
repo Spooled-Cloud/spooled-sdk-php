@@ -43,13 +43,15 @@ final readonly class ApiKey
         return new self(
             id: (string) ($data['id'] ?? ''),
             name: (string) ($data['name'] ?? ''),
-            prefix: (string) ($data['prefix'] ?? ''),
+            prefix: (string) ($data['prefix'] ?? $data['keyPrefix'] ?? $data['key_prefix'] ?? ''),
             key: isset($data['key']) ? (string) $data['key'] : null,
-            active: (bool) ($data['active'] ?? true),
+            active: (bool) ($data['active'] ?? $data['isActive'] ?? $data['is_active'] ?? true),
             organizationId: isset($data['organizationId']) ? (string) $data['organizationId'] : null,
             scopes: isset($data['scopes']) && is_array($data['scopes']) ? $data['scopes'] : null,
             expiresAt: isset($data['expiresAt']) ? (string) $data['expiresAt'] : null,
-            lastUsedAt: isset($data['lastUsedAt']) ? (string) $data['lastUsedAt'] : null,
+            lastUsedAt: isset($data['lastUsedAt']) ? (string) $data['lastUsedAt']
+                : (isset($data['lastUsed']) ? (string) $data['lastUsed']
+                : (isset($data['last_used']) ? (string) $data['last_used'] : null)),
             createdAt: isset($data['createdAt']) ? (string) $data['createdAt'] : null,
             updatedAt: isset($data['updatedAt']) ? (string) $data['updatedAt'] : null,
         );

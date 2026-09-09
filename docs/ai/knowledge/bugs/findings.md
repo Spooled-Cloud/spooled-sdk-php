@@ -20,3 +20,4 @@
 | PH-15 | P1 | ~~`Queue::$name` always empty (API sends `queue_name`)~~ **FIXED** | `src/Types/Queue.php` |
 | PH-16 | P1 | ~~`QueueStats` counts always 0 (API sends `pending_jobs` etc.)~~ **FIXED** | `src/Types/Queue.php` |
 | PH-17 | P1 | ~~`Queue::$timeout` always null; `$paused` ignored `enabled`~~ **FIXED** | `src/Types/Queue.php` |
+| PH-18 | P1 | ~~`ApiKey::$active` always true; `$lastUsedAt` always null (API sends `is_active`/`last_used`)~~ **FIXED** | `src/Types/ApiKey.php` |
