@@ -17,3 +17,4 @@
 - API key JSON uses `is_active` (camelCase `isActive`) and `last_used` (`lastUsed`), not `active`/`lastUsedAt`. List/get never send `prefix`; create returns `key` once.
 - Outgoing webhook delivery JSON uses `event`, `attempts`, and `response_body` (camelCase `responseBody`), not `eventType`/`attemptNumber`/`response`.
 - Schedule history is a raw array of runs (`error_message`, `started_at`), not `{history: [...]}` with `error`/`executedAt`.
+- Webhook test is `POST /outgoing-webhooks/{id}/test` → `{ success, status_code, response_time_ms, error }`, not a delivery. `webhooks->test()` returns `TestWebhookResponse`.

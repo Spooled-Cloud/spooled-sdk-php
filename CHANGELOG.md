@@ -79,8 +79,13 @@ Tracks Spooled backend 0.1.111.
   `GET /schedules/{id}/history` and maps `errorMessage`/`startedAt`. It
   previously looked for a `history` wrapper and `error`/`executedAt`, so
   history was always empty and a run's error and time were always null.
+- `webhooks->test()` now returns `TestWebhookResponse` (`success`,
+  `statusCode`, `responseTimeMs`, `error`). It previously parsed the probe
+  as a `WebhookDelivery`, so `success` was missing and status was always
+  `pending`.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
+**Breaking:** `webhooks->test()` now returns `TestWebhookResponse` instead of `WebhookDelivery`. The test endpoint never sent a delivery.
 
 ### Removed
 

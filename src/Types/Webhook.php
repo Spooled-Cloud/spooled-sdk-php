@@ -222,3 +222,35 @@ final readonly class WebhookDeliveryList
         );
     }
 }
+
+/**
+ * Response from POST /outgoing-webhooks/{id}/test.
+ *
+ * This is a probe result, not a delivery record: the API sends success,
+ * status_code, response_time_ms, and error, and never creates a delivery row.
+ */
+final readonly class TestWebhookResponse
+{
+    public function __construct(
+        public bool $success,
+        public ?int $statusCode,
+        public int $responseTimeMs,
+        public ?string $error,
+    ) {
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public static function fromArray(array $data): self
+    {
+        $statusCode = $data['statusCode'] ?? $data['status_code'] ?? null;
+
+        return new self(
+            success: (bool) ($data['success'] ?? false),
+            statusCode: $statusCode !== null ? (int) $statusCode : null,
+            responseTimeMs: (int) ($data['responseTimeMs'] ?? $data['response_time_ms'] ?? 0),
+            error: isset($data['error']) ? (string) $data['error'] : null,
+        );
+    }
+}

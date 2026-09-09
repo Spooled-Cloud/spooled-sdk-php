@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Spooled\Resources;
 
 use Spooled\Types\SuccessResponse;
+use Spooled\Types\TestWebhookResponse;
 use Spooled\Types\Webhook;
 use Spooled\Types\WebhookDelivery;
 use Spooled\Types\WebhookDeliveryList;
@@ -85,12 +86,15 @@ final class WebhooksResource extends BaseResource
 
     /**
      * Test a webhook.
+     *
+     * POST /outgoing-webhooks/{id}/test returns a probe result
+     * (`success`, `status_code`, `response_time_ms`, `error`), not a delivery.
      */
-    public function test(string $webhookId): WebhookDelivery
+    public function test(string $webhookId): TestWebhookResponse
     {
         $response = $this->httpClient->post("outgoing-webhooks/{$webhookId}/test");
 
-        return WebhookDelivery::fromArray($response);
+        return TestWebhookResponse::fromArray($response);
     }
 
     /**
