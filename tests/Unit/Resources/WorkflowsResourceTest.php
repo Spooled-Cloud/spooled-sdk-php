@@ -127,6 +127,25 @@ final class WorkflowsResourceTest extends TestCase
     }
 
     #[Test]
+    public function delete_posts_cancel_not_a_missing_delete_route(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('post')
+            ->with('workflows/wf_1/cancel')
+            ->willReturn([
+                'id' => 'wf_1',
+                'name' => 'ETL',
+                'status' => 'cancelled',
+            ]);
+        $httpClient->expects($this->never())->method('delete');
+
+        $got = (new WorkflowsResource($httpClient))->delete('wf_1');
+
+        $this->assertTrue($got->success);
+    }
+
+    #[Test]
     public function add_dependencies_sends_depends_on_not_depends_on_job_ids(): void
     {
         $captured = null;

@@ -33,6 +33,7 @@
 - There is no `GET /admin/queues`. PHP `admin->listQueues()` uses `GET /queues`.
 - There is no `GET /admin/schedules`. PHP `admin->listSchedules()` uses `GET /schedules`.
 - There is no `GET /admin/workflows`. PHP `admin->listWorkflows()` uses `GET /workflows`.
+- There is no `DELETE /workflows/{id}`. PHP `workflows->delete()` is `POST /workflows/{id}/cancel`.
 - Queue stats are `pending_jobs`, `processing_jobs`, `completed_jobs_24h`, `failed_jobs_24h`, `avg_processing_time_ms`, not `pending`/`claimed`/`completed`.
 - API key JSON uses `is_active` (camelCase `isActive`) and `last_used` (`lastUsed`), not `active`/`lastUsedAt`. List/get never send `prefix`; create returns `key` once.
 - API key list/get send `queues` (empty = all queues), not `scopes`. PHP `ApiKey::$scopes` maps `queues`.

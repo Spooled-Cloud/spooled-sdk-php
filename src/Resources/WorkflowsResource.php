@@ -89,12 +89,15 @@ final class WorkflowsResource extends BaseResource
 
     /**
      * Delete a workflow.
+     *
+     * There is no DELETE /workflows/{id}. POST cancel is the terminal action
+     * (pending jobs are cancelled; the workflow row stays with status cancelled).
      */
     public function delete(string $workflowId): SuccessResponse
     {
-        $response = $this->httpClient->delete("workflows/{$workflowId}");
+        $this->httpClient->post("workflows/{$workflowId}/cancel");
 
-        return SuccessResponse::fromArray($response);
+        return new SuccessResponse(true);
     }
 
     /**
