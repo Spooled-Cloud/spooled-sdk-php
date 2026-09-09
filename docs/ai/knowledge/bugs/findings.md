@@ -48,3 +48,4 @@
 | PH-43 | P1 | ~~`auth->validate()` dropped `claims` (org/queues/exp always empty)~~ **FIXED** | `src/Types/Auth.php`; POST `/auth/validate` is `{valid,error,claims}` |
 | PH-44 | P1 | ~~`auth->logout()` omitted refresh token so `/auth/refresh` survived~~ **FIXED** | `src/Resources/AuthResource.php`; POST `/auth/logout` body `refresh_token` |
 | PH-45 | P1 | ~~`workflows->delete()` DELETEd `/workflows/{id}` (404)~~ **FIXED** | `src/Resources/WorkflowsResource.php`; `POST /workflows/{id}/cancel` |
+| PH-46 | P1 | ~~`dashboard->getOverview()` / charts / activity hit missing `/dashboard/*` subpaths~~ **FIXED** | `src/Resources/DashboardResource.php`; `GET /dashboard` |
