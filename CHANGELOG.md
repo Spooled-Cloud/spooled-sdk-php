@@ -83,6 +83,9 @@ Tracks Spooled backend 0.1.111.
   `statusCode`, `responseTimeMs`, `error`). It previously parsed the probe
   as a `WebhookDelivery`, so `success` was missing and status was always
   `pending`.
+- `Job::$retryCount` now maps `attempt` from `GET /jobs` and `GET /jobs/dlq`.
+  Those list bodies send `attempt`, not `retryCount`, so every listed job
+  looked like it had never been retried.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 **Breaking:** `webhooks->test()` now returns `TestWebhookResponse` instead of `WebhookDelivery`. The test endpoint never sent a delivery.

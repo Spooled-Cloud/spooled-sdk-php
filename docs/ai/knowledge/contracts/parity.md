@@ -18,3 +18,4 @@
 - Outgoing webhook delivery JSON uses `event`, `attempts`, and `response_body` (camelCase `responseBody`), not `eventType`/`attemptNumber`/`response`.
 - Schedule history is a raw array of runs (`error_message`, `started_at`), not `{history: [...]}` with `error`/`executedAt`.
 - Webhook test is `POST /outgoing-webhooks/{id}/test` → `{ success, status_code, response_time_ms, error }`, not a delivery. `webhooks->test()` returns `TestWebhookResponse`.
+- Job list/DLQ summaries send `attempt` and `max_retries`, not `retry_count`. `Job::$retryCount` maps from `attempt`. Detail `GET /jobs/{id}` still uses `retry_count`.

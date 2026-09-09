@@ -84,6 +84,23 @@ final class JobTest extends TestCase
     }
 
     #[Test]
+    public function from_array_reads_attempt_from_list_json(): void
+    {
+        $job = Job::fromArray([
+            'id' => 'job_1',
+            'queueName' => 'emails',
+            'status' => 'pending',
+            'priority' => 0,
+            'attempt' => 2,
+            'maxRetries' => 5,
+            'createdAt' => '2024-01-01T00:00:00Z',
+        ]);
+
+        $this->assertSame(2, $job->retryCount);
+        $this->assertSame(5, $job->maxRetries);
+    }
+
+    #[Test]
     public function it_converts_job_to_array(): void
     {
         $data = [

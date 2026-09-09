@@ -24,3 +24,4 @@
 | PH-19 | P1 | ~~`WebhookDelivery::$attemptNumber` always 1; `$response` always null (API sends `attempts`/`response_body`)~~ **FIXED** | `src/Types/Webhook.php` |
 | PH-20 | P1 | ~~`schedules->history()` always empty; entries dropped `error_message`/`started_at`~~ **FIXED** | `src/Resources/SchedulesResource.php`; `src/Types/Schedule.php` |
 | PH-21 | P1 | ~~`webhooks->test()` mapped probe `{success,status_code,response_time_ms}` onto `WebhookDelivery`~~ **FIXED** | `src/Resources/WebhooksResource.php`; `src/Types/Webhook.php` |
+| PH-22 | P1 | ~~`Job::$retryCount` always 0 on list/DLQ (API sends `attempt`)~~ **FIXED** | `src/Types/Job.php` |

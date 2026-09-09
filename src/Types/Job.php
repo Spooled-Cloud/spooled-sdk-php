@@ -71,7 +71,7 @@ final readonly class Job
             status: (string) ($data['status'] ?? 'pending'),
             payload: is_array($data['payload'] ?? null) ? $data['payload'] : [],
             priority: (int) ($data['priority'] ?? 0),
-            retryCount: (int) ($data['retryCount'] ?? $data['retry_count'] ?? 0),
+            retryCount: (int) ($data['retryCount'] ?? $data['retry_count'] ?? $data['attempt'] ?? 0),
             maxRetries: (int) ($data['maxRetries'] ?? $data['max_retries'] ?? 3),
             workerId: isset($data['workerId']) ? (string) $data['workerId'] : null,
             workerName: isset($data['workerName']) ? (string) $data['workerName'] : null,
