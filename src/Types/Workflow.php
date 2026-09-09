@@ -61,6 +61,14 @@ final readonly class Workflow
             ], $jobIds);
         }
 
+        // GET /workflows/{id} is WorkflowDetailResponse: counts live under
+        // `progress`, not top-level total_jobs like list/cancel/retry.
+        $progress = is_array($data['progress'] ?? null) ? $data['progress'] : [];
+        $detailJobs = $data['jobs'] ?? null;
+        $detailJobCount = (is_array($detailJobs) && $detailJobs !== [] && !isset($detailJobs['id']))
+            ? count($detailJobs)
+            : 0;
+
         return new self(
             id: $id,
             name: (string) ($data['name'] ?? ''),
@@ -69,9 +77,9 @@ final readonly class Workflow
                 : (isset($data['organizationId']) ? (string) $data['organizationId'] : null),
             description: isset($data['description']) ? (string) $data['description'] : null,
             metadata: is_array($data['metadata'] ?? null) ? $data['metadata'] : null,
-            totalJobs: (int) ($data['total_jobs'] ?? $data['totalJobs'] ?? (is_array($jobs) ? count($jobs) : 0)),
-            completedJobs: (int) ($data['completed_jobs'] ?? $data['completedJobs'] ?? 0),
-            failedJobs: (int) ($data['failed_jobs'] ?? $data['failedJobs'] ?? 0),
+            totalJobs: (int) ($data['total_jobs'] ?? $data['totalJobs'] ?? $progress['total'] ?? (is_array($jobs) ? count($jobs) : $detailJobCount)),
+            completedJobs: (int) ($data['completed_jobs'] ?? $data['completedJobs'] ?? $progress['completed'] ?? 0),
+            failedJobs: (int) ($data['failed_jobs'] ?? $data['failedJobs'] ?? $progress['failed'] ?? 0),
             createdAt: isset($data['created_at']) ? (string) $data['created_at']
                 : (isset($data['createdAt']) ? (string) $data['createdAt'] : null),
             updatedAt: isset($data['updated_at']) ? (string) $data['updated_at']

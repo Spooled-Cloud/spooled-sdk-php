@@ -61,6 +61,24 @@ final class WorkflowsResourceTest extends TestCase
     }
 
     #[Test]
+    public function get_maps_progress_counts_from_workflow_detail(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('get')
+            ->with('workflows/wf_1')
+            ->willReturn($this->detailPayload());
+
+        $workflow = (new WorkflowsResource($httpClient))->get('wf_1');
+
+        $this->assertSame('wf_1', $workflow->id);
+        $this->assertSame('ETL', $workflow->name);
+        $this->assertSame(2, $workflow->totalJobs);
+        $this->assertSame(1, $workflow->completedJobs);
+        $this->assertSame(0, $workflow->failedJobs);
+    }
+
+    #[Test]
     public function list_jobs_reads_workflow_detail_not_a_jobs_subpath(): void
     {
         $httpClient = $this->createMock(HttpClient::class);
@@ -141,6 +159,13 @@ final class WorkflowsResourceTest extends TestCase
             'id' => 'wf_1',
             'name' => 'ETL',
             'status' => 'running',
+            'progress' => [
+                'total' => 2,
+                'completed' => 1,
+                'failed' => 0,
+                'pending' => 1,
+                'processing' => 0,
+            ],
             'jobs' => [
                 [
                     'id' => 'job_1',

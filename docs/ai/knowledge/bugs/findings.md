@@ -32,3 +32,4 @@
 | PH-27 | P1 | ~~`WebhookToken` dropped `webhook_url` from GET/POST `/organizations/webhook-token`~~ **FIXED** | `src/Types/Organization.php` |
 | PH-28 | P1 | ~~`jobs->create()` mapped `{id, created}` onto `Job`, dropping `created` and leaving queue/status empty~~ **FIXED** | `src/Resources/JobsResource.php` |
 | PH-29 | P1 | ~~`getUsage()` dropped `jobs_today`/`warnings`/`plan_display_name`~~ **FIXED** | `src/Types/Organization.php` |
+| PH-30 | P1 | ~~`workflows->get()` left `totalJobs`/`completedJobs`/`failedJobs` at 0~~ **FIXED** | `src/Types/Workflow.php`; GET detail puts counts under `progress` |
