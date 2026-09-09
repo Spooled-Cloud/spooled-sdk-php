@@ -32,6 +32,37 @@ final class WorkflowsResourceTest extends TestCase
     }
 
     #[Test]
+    public function get_dependencies_maps_backend_shape(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('get')
+            ->with('jobs/job_2/dependencies')
+            ->willReturn([
+                'jobId' => 'job_2',
+                'dependencies' => [
+                    ['jobId' => 'job_1', 'queueName' => 'etl', 'status' => 'completed'],
+                ],
+                'dependents' => [
+                    ['jobId' => 'job_3', 'queueName' => 'etl', 'status' => 'pending'],
+                ],
+                'dependenciesMet' => true,
+            ]);
+
+        $got = (new WorkflowsResource($httpClient))->jobs->getDependencies('job_2');
+
+        $this->assertSame('job_2', $got->jobId);
+        $this->assertTrue($got->dependenciesMet);
+        $this->assertCount(1, $got->dependencies);
+        $this->assertSame('job_1', $got->dependencies[0]->jobId);
+        $this->assertSame('etl', $got->dependencies[0]->queueName);
+        $this->assertTrue($got->dependencies[0]->isMet);
+        $this->assertCount(1, $got->dependents);
+        $this->assertSame('job_3', $got->dependents[0]->jobId);
+        $this->assertFalse($got->dependents[0]->isMet);
+    }
+
+    #[Test]
     public function add_dependencies_sends_depends_on_not_depends_on_job_ids(): void
     {
         $captured = null;

@@ -256,11 +256,14 @@ final readonly class JobWithDependencies
 {
     /**
      * @param array<JobDependency> $dependencies
+     * @param array<JobDependency> $dependents
      */
     public function __construct(
         public string $jobId,
         public array $dependencies,
-        public string $dependencyMode,
+        public array $dependents = [],
+        public bool $dependenciesMet = false,
+        public string $dependencyMode = 'all',
     ) {
     }
 
@@ -269,16 +272,32 @@ final readonly class JobWithDependencies
      */
     public static function fromArray(array $data): self
     {
-        $deps = array_map(
-            fn (array $item) => JobDependency::fromArray($item),
-            $data['dependencies'] ?? [],
-        );
-
         return new self(
-            jobId: (string) ($data['jobId'] ?? $data['id'] ?? ''),
-            dependencies: $deps,
-            dependencyMode: (string) ($data['dependencyMode'] ?? 'all'),
+            jobId: (string) ($data['jobId'] ?? $data['job_id'] ?? $data['id'] ?? ''),
+            dependencies: self::mapEdges($data['dependencies'] ?? []),
+            dependents: self::mapEdges($data['dependents'] ?? []),
+            dependenciesMet: (bool) ($data['dependenciesMet'] ?? $data['dependencies_met'] ?? false),
+            dependencyMode: (string) ($data['dependencyMode'] ?? $data['dependency_mode'] ?? 'all'),
         );
+    }
+
+    /**
+     * @param mixed $edges
+     * @return array<JobDependency>
+     */
+    private static function mapEdges(mixed $edges): array
+    {
+        if (!is_array($edges)) {
+            return [];
+        }
+        $out = [];
+        foreach ($edges as $item) {
+            if (is_array($item)) {
+                $out[] = JobDependency::fromArray($item);
+            }
+        }
+
+        return $out;
     }
 }
 
@@ -290,7 +309,8 @@ final readonly class JobDependency
     public function __construct(
         public string $jobId,
         public string $status,
-        public bool $isMet,
+        public ?string $queueName = null,
+        public bool $isMet = false,
     ) {
     }
 
@@ -299,10 +319,14 @@ final readonly class JobDependency
      */
     public static function fromArray(array $data): self
     {
+        $status = (string) ($data['status'] ?? 'pending');
+        $queue = $data['queueName'] ?? $data['queue_name'] ?? null;
+
         return new self(
-            jobId: (string) ($data['jobId'] ?? $data['id'] ?? ''),
-            status: (string) ($data['status'] ?? 'pending'),
-            isMet: (bool) ($data['isMet'] ?? $data['met'] ?? false),
+            jobId: (string) ($data['jobId'] ?? $data['job_id'] ?? $data['id'] ?? ''),
+            status: $status,
+            queueName: is_string($queue) ? $queue : null,
+            isMet: $status === 'completed' || (bool) ($data['isMet'] ?? $data['met'] ?? false),
         );
     }
 }
