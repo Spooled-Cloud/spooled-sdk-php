@@ -14,3 +14,4 @@
 | PS-W1 | P2 | ~~Worker type drift from REST~~ **FIXED 1.1.0** | `src/Types/Worker.php` |
 | PH-10 | P1 | ~~`checkEmail` dropped `available`/`signupEnabled`; `canRegister` always true~~ **FIXED** | `src/Types/Auth.php`; backend is `GET /auth/check-email` |
 | PH-11 | P2 | ~~`emailStart` dropped `emailSentTo`~~ **FIXED** | `src/Types/Auth.php`; body is `message` + `email_sent_to` |
+| PH-12 | P1 | ~~`Organization::$plan` always `free` (API sends `plan_tier`)~~ **FIXED** | `src/Types/Organization.php` |

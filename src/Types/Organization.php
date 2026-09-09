@@ -49,7 +49,7 @@ final readonly class Organization
             id: (string) ($data['id'] ?? ''),
             name: (string) ($data['name'] ?? ''),
             slug: (string) ($data['slug'] ?? ''),
-            plan: (string) ($data['plan'] ?? 'free'),
+            plan: (string) ($data['planTier'] ?? $data['plan_tier'] ?? $data['plan'] ?? 'free'),
             email: isset($data['email']) ? (string) $data['email'] : null,
             billingEmail: isset($data['billingEmail']) ? (string) $data['billingEmail'] : null,
             stripeCustomerId: isset($data['stripeCustomerId']) ? (string) $data['stripeCustomerId'] : null,

@@ -51,6 +51,8 @@ Tracks Spooled backend 0.1.111.
 - `auth->emailStart()` now maps `emailSentTo` from `POST /auth/email/start`.
   It previously dropped that field and typed `codeExpiresIn`, which the API
   never sends.
+- `Organization` now reads `planTier` (`plan_tier`). It previously looked for
+  `plan`, which the API never sends, so every org looked like the free plan.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 

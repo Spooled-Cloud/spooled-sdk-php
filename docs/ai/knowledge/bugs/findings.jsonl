@@ -10,3 +10,4 @@
 {"id":"PS-W1","sev":"P2","summary":"PHP Worker type drifted from REST worker JSON","path":"src/Types/Worker.php","status":"fixed","note":"Fixed in 1.1.0: maps public REST fields; heartbeat is void"}
 {"id":"PH-10","sev":"P1","summary":"checkEmail dropped available/signupEnabled and defaulted canRegister true","path":"src/Types/Auth.php","status":"fixed","note":"Maps GET /auth/check-email body; canRegister is derived from available && signupEnabled"}
 {"id":"PH-11","sev":"P2","summary":"emailStart dropped emailSentTo from POST /auth/email/start","path":"src/Types/Auth.php","status":"fixed","note":"Maps message+emailSentTo; success is derived on HTTP 200"}
+{"id":"PH-12","sev":"P1","summary":"Organization plan always free because fromArray read plan not planTier","path":"src/Types/Organization.php","status":"fixed","note":"GET org/list send plan_tier; usage endpoint still uses plan"}
