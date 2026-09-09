@@ -30,7 +30,7 @@ final readonly class Queue
     public static function fromArray(array $data): self
     {
         return new self(
-            name: (string) ($data['name'] ?? ''),
+            name: (string) ($data['queueName'] ?? $data['queue_name'] ?? $data['name'] ?? ''),
             paused: (bool) ($data['paused'] ?? false),
             organizationId: isset($data['organizationId']) ? (string) $data['organizationId'] : null,
             maxConcurrency: isset($data['maxConcurrency']) ? (int) $data['maxConcurrency'] : null,

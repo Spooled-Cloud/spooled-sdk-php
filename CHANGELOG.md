@@ -60,6 +60,8 @@ Tracks Spooled backend 0.1.111.
 - `organizations->checkSlug()` now maps `valid`, `error`, and `suggestion`
   from `GET /organizations/check-slug`. It previously looked for
   `suggestions` (plural), which the API never sends.
+- `Queue` now reads `queueName` (`queue_name`). It previously looked for
+  `name`, which list/get never send, so every queue looked unnamed.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 

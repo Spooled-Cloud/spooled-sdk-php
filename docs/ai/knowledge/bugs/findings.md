@@ -17,3 +17,4 @@
 | PH-12 | P1 | ~~`Organization::$plan` always `free` (API sends `plan_tier`)~~ **FIXED** | `src/Types/Organization.php` |
 | PH-13 | P1 | ~~`organizations->create()` dropped the one-time `api_key`~~ **FIXED** | `src/Resources/OrganizationsResource.php` |
 | PH-14 | P2 | ~~`checkSlug` looked for `suggestions`; API sends `suggestion`/`valid`/`error`~~ **FIXED** | `src/Resources/OrganizationsResource.php` |
+| PH-15 | P1 | ~~`Queue::$name` always empty (API sends `queue_name`)~~ **FIXED** | `src/Types/Queue.php` |
