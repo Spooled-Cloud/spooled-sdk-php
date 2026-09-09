@@ -168,13 +168,15 @@ final class AdminResource extends BaseResource
     }
 
     /**
-     * List all queues (admin).
+     * List queues.
+     *
+     * There is no `GET /admin/queues`. The backend contract is `GET /queues`.
      *
      * @param array<string, mixed> $params
      */
     public function listQueues(array $params = []): QueueList
     {
-        $response = $this->httpClient->get('admin/queues', $params, $this->getAdminHeaders());
+        $response = $this->httpClient->get('queues', $params, $this->getAdminHeaders());
 
         return QueueList::fromArray($response);
     }

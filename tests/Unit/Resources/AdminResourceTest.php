@@ -228,4 +228,24 @@ final class AdminResourceTest extends TestCase
         $this->assertSame('w_1', $got->id);
         $this->assertSame('healthy', $got->status);
     }
+
+    #[Test]
+    public function list_queues_gets_queues_not_a_missing_admin_route(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('get')
+            ->with('queues', [], ['X-Admin-Key' => 'adminkey'])
+            ->willReturn([
+                [
+                    'queueName' => 'emails',
+                    'enabled' => true,
+                ],
+            ]);
+
+        $got = (new AdminResource($httpClient, 'adminkey'))->listQueues();
+
+        $this->assertCount(1, $got->queues);
+        $this->assertSame('emails', $got->queues[0]->name);
+    }
 }

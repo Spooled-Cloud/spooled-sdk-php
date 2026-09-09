@@ -40,3 +40,4 @@
 | PH-35 | P1 | ~~`admin->cancelJob()` POSTed `/admin/jobs/{id}/cancel` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `DELETE /jobs/{id}` then GET |
 | PH-36 | P1 | ~~`admin->listJobs()` / `getJob()` called `/admin/jobs` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /jobs` and `GET /jobs/{id}` |
 | PH-37 | P1 | ~~`admin->listWorkers()` / `getWorker()` called `/admin/workers` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /workers` and `GET /workers/{id}` |
+| PH-38 | P1 | ~~`admin->listQueues()` called `/admin/queues` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /queues` |
