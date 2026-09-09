@@ -101,6 +101,36 @@ final class JobTest extends TestCase
     }
 
     #[Test]
+    public function from_array_reads_job_type_from_list_json(): void
+    {
+        $job = Job::fromArray([
+            'id' => 'job_1',
+            'queueName' => 'emails',
+            'status' => 'pending',
+            'jobType' => 'send_email',
+            'attempt' => 0,
+            'maxRetries' => 3,
+            'createdAt' => '2024-01-01T00:00:00Z',
+        ]);
+
+        $this->assertSame('send_email', $job->jobType);
+    }
+
+    #[Test]
+    public function from_array_reads_job_type_from_payload_on_get(): void
+    {
+        $job = Job::fromArray([
+            'id' => 'job_1',
+            'queueName' => 'emails',
+            'status' => 'pending',
+            'payload' => ['jobType' => 'send_email', 'to' => 'a@b.c'],
+            'retryCount' => 1,
+        ]);
+
+        $this->assertSame('send_email', $job->jobType);
+    }
+
+    #[Test]
     public function from_array_reads_last_error_and_assigned_worker_id(): void
     {
         $job = Job::fromArray([

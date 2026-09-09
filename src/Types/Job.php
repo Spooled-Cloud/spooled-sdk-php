@@ -55,6 +55,8 @@ final readonly class Job
         public ?string $expiresAt,
         /** Fencing token for the current lease; echo on complete/fail/heartbeat */
         public ?string $leaseId = null,
+        /** From list `job_type` or GET `payload.job_type`. */
+        public ?string $jobType = null,
     ) {
     }
 
@@ -99,7 +101,28 @@ final readonly class Job
             expiresAt: isset($data['expiresAt']) ? (string) $data['expiresAt'] : null,
             leaseId: isset($data['leaseId']) ? (string) $data['leaseId']
                 : (isset($data['lease_id']) ? (string) $data['lease_id'] : null),
+            jobType: self::jobTypeFrom($data),
         );
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function jobTypeFrom(array $data): ?string
+    {
+        foreach (['jobType', 'job_type'] as $key) {
+            if (isset($data[$key]) && is_string($data[$key]) && $data[$key] !== '') {
+                return $data[$key];
+            }
+        }
+        $payload = is_array($data['payload'] ?? null) ? $data['payload'] : [];
+        foreach (['jobType', 'job_type'] as $key) {
+            if (isset($payload[$key]) && is_string($payload[$key]) && $payload[$key] !== '') {
+                return $payload[$key];
+            }
+        }
+
+        return null;
     }
 
     /**
@@ -136,6 +159,7 @@ final readonly class Job
             'claimedAt' => $this->claimedAt,
             'leaseExpiresAt' => $this->leaseExpiresAt,
             'leaseId' => $this->leaseId,
+            'jobType' => $this->jobType,
         ], fn ($v) => $v !== null);
     }
 }
