@@ -38,6 +38,7 @@
 - Queue stats are `pending_jobs`, `processing_jobs`, `completed_jobs_24h`, `failed_jobs_24h`, `avg_processing_time_ms`, not `pending`/`claimed`/`completed`.
 - API key JSON uses `is_active` (camelCase `isActive`) and `last_used` (`lastUsed`), not `active`/`lastUsedAt`. List/get never send `prefix`; create returns `key` once.
 - API key list/get send `queues` (empty = all queues), not `scopes`. PHP `ApiKey::$scopes` maps `queues`.
+- There is no `POST /api-keys/{id}/regenerate`. PHP `apiKeys->regenerate()` creates a replacement (same name/queues/rate limit/expiry) then deletes the old key so `key` is shown once.
 - Outgoing webhook delivery JSON uses `event`, `attempts`, and `response_body` (camelCase `responseBody`), not `eventType`/`attemptNumber`/`response`.
 - Schedule history is a raw array of runs (`error_message`, `started_at`), not `{history: [...]}` with `error`/`executedAt`.
 - Webhook test is `POST /outgoing-webhooks/{id}/test` → `{ success, status_code, response_time_ms, error }`, not a delivery. `webhooks->test()` returns `TestWebhookResponse`.

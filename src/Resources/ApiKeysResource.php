@@ -79,11 +79,32 @@ final class ApiKeysResource extends BaseResource
 
     /**
      * Regenerate an API key.
+     *
+     * There is no POST /api-keys/{id}/regenerate. Create a replacement with
+     * the same name/queues/rate limit/expiry, then delete the old row so the
+     * raw key is shown once (create's `key` field).
      */
     public function regenerate(string $keyId): ApiKey
     {
-        $response = $this->httpClient->post("api-keys/{$keyId}/regenerate");
+        $existing = $this->httpClient->get("api-keys/{$keyId}");
+        $body = [
+            'name' => (string) ($existing['name'] ?? ''),
+        ];
+        if (isset($existing['queues']) && is_array($existing['queues'])) {
+            $body['queues'] = $existing['queues'];
+        }
+        $rateLimit = $existing['rateLimit'] ?? $existing['rate_limit'] ?? null;
+        if ($rateLimit !== null) {
+            $body['rateLimit'] = $rateLimit;
+        }
+        $expiresAt = $existing['expiresAt'] ?? $existing['expires_at'] ?? null;
+        if (is_string($expiresAt) && $expiresAt !== '') {
+            $body['expiresAt'] = $expiresAt;
+        }
 
-        return ApiKey::fromArray($response);
+        $created = $this->httpClient->post('api-keys', $body);
+        $this->httpClient->delete("api-keys/{$keyId}");
+
+        return ApiKey::fromArray($created);
     }
 }
