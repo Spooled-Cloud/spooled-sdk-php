@@ -45,6 +45,9 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `admin->deregisterWorker()` now sends `POST /workers/{id}/deregister`.
+  It previously DELETEd `/admin/workers/{id}`, which is not a backend route,
+  so every deregister 404'd. DELETE on the real path 405s.
 - `admin->purgeQueue()` now sends `DELETE /queues/{name}?delete_jobs=true`.
   It previously POSTed `/admin/queues/{name}/purge`, which is not a backend
   route, so every purge 404'd.

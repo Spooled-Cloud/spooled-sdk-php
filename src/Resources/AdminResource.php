@@ -136,11 +136,19 @@ final class AdminResource extends BaseResource
     }
 
     /**
-     * Deregister a worker (admin).
+     * Deregister a worker.
+     *
+     * There is no `DELETE /admin/workers/{id}`. The backend contract is
+     * `POST /workers/{id}/deregister` (DELETE on that path 405s).
      */
     public function deregisterWorker(string $workerId): SuccessResponse
     {
-        $response = $this->httpClient->delete("admin/workers/{$workerId}", [], $this->getAdminHeaders());
+        $response = $this->httpClient->post(
+            "workers/{$workerId}/deregister",
+            null,
+            [],
+            $this->getAdminHeaders(),
+        );
 
         return SuccessResponse::fromArray($response);
     }

@@ -101,4 +101,24 @@ final class AdminResourceTest extends TestCase
 
         $this->assertTrue($got->success);
     }
+
+    #[Test]
+    public function deregister_worker_posts_deregister_not_a_missing_delete_route(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('post')
+            ->with(
+                'workers/w_1/deregister',
+                null,
+                [],
+                ['X-Admin-Key' => 'adminkey'],
+            )
+            ->willReturn([]);
+        $httpClient->expects($this->never())->method('delete');
+
+        $got = (new AdminResource($httpClient, 'adminkey'))->deregisterWorker('w_1');
+
+        $this->assertTrue($got->success);
+    }
 }
