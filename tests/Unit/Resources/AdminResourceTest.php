@@ -270,4 +270,25 @@ final class AdminResourceTest extends TestCase
         $this->assertCount(1, $got->schedules);
         $this->assertSame('sch_1', $got->schedules[0]->id);
     }
+
+    #[Test]
+    public function list_workflows_gets_workflows_not_a_missing_admin_route(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('get')
+            ->with('workflows', [], ['X-Admin-Key' => 'adminkey'])
+            ->willReturn([
+                [
+                    'id' => 'wf_1',
+                    'name' => 'ingest',
+                    'status' => 'running',
+                ],
+            ]);
+
+        $got = (new AdminResource($httpClient, 'adminkey'))->listWorkflows();
+
+        $this->assertCount(1, $got->workflows);
+        $this->assertSame('wf_1', $got->workflows[0]->id);
+    }
 }

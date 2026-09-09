@@ -42,3 +42,4 @@
 | PH-37 | P1 | ~~`admin->listWorkers()` / `getWorker()` called `/admin/workers` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /workers` and `GET /workers/{id}` |
 | PH-38 | P1 | ~~`admin->listQueues()` called `/admin/queues` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /queues` |
 | PH-39 | P1 | ~~`admin->listSchedules()` called `/admin/schedules` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /schedules` |
+| PH-40 | P1 | ~~`admin->listWorkflows()` called `/admin/workflows` (404)~~ **FIXED** | `src/Resources/AdminResource.php`; `GET /workflows` |

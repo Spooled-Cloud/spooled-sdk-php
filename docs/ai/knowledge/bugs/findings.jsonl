@@ -37,3 +37,4 @@
 {"id":"PH-37","sev":"P1","summary":"admin listWorkers and getWorker called /admin/workers which 404s","path":"src/Resources/AdminResource.php","status":"fixed","note":"There is no admin workers list/get route; GET /workers and GET /workers/{id} are the backend contract"}
 {"id":"PH-38","sev":"P1","summary":"admin listQueues called /admin/queues which 404s","path":"src/Resources/AdminResource.php","status":"fixed","note":"There is no admin queues list route; GET /queues is the backend contract"}
 {"id":"PH-39","sev":"P1","summary":"admin listSchedules called /admin/schedules which 404s","path":"src/Resources/AdminResource.php","status":"fixed","note":"There is no admin schedules list route; GET /schedules is the backend contract"}
+{"id":"PH-40","sev":"P1","summary":"admin listWorkflows called /admin/workflows which 404s","path":"src/Resources/AdminResource.php","status":"fixed","note":"There is no admin workflows list route; GET /workflows is the backend contract"}

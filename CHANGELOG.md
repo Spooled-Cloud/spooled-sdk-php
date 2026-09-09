@@ -45,6 +45,8 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `admin->listWorkflows()` now calls `GET /workflows`. It previously requested
+  `/admin/workflows`, which is not a backend route, so every list 404'd.
 - `admin->listSchedules()` now calls `GET /schedules`. It previously requested
   `/admin/schedules`, which is not a backend route, so every list 404'd.
 - `admin->listQueues()` now calls `GET /queues`. It previously requested

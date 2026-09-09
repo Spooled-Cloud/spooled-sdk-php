@@ -196,13 +196,15 @@ final class AdminResource extends BaseResource
     }
 
     /**
-     * List all workflows (admin).
+     * List workflows.
+     *
+     * There is no `GET /admin/workflows`. The backend contract is `GET /workflows`.
      *
      * @param array<string, mixed> $params
      */
     public function listWorkflows(array $params = []): WorkflowList
     {
-        $response = $this->httpClient->get('admin/workflows', $params, $this->getAdminHeaders());
+        $response = $this->httpClient->get('workflows', $params, $this->getAdminHeaders());
 
         return WorkflowList::fromArray($response);
     }

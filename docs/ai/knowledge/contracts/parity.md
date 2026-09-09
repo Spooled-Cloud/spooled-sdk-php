@@ -29,6 +29,7 @@
 - There is no `GET /admin/workers` or `GET /admin/workers/{id}`. PHP `admin->listWorkers()` / `getWorker()` use `GET /workers` and `GET /workers/{id}`.
 - There is no `GET /admin/queues`. PHP `admin->listQueues()` uses `GET /queues`.
 - There is no `GET /admin/schedules`. PHP `admin->listSchedules()` uses `GET /schedules`.
+- There is no `GET /admin/workflows`. PHP `admin->listWorkflows()` uses `GET /workflows`.
 - Queue stats are `pending_jobs`, `processing_jobs`, `completed_jobs_24h`, `failed_jobs_24h`, `avg_processing_time_ms`, not `pending`/`claimed`/`completed`.
 - API key JSON uses `is_active` (camelCase `isActive`) and `last_used` (`lastUsed`), not `active`/`lastUsedAt`. List/get never send `prefix`; create returns `key` once.
 - Outgoing webhook delivery JSON uses `event`, `attempts`, and `response_body` (camelCase `responseBody`), not `eventType`/`attemptNumber`/`response`.
