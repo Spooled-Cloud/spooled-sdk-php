@@ -10,10 +10,53 @@ use PHPUnit\Framework\TestCase;
 use Spooled\Http\HttpClient;
 use Spooled\Resources\WorkflowJobsSubResource;
 use Spooled\Resources\WorkflowsResource;
+use Spooled\Util\Casing;
 
+#[CoversClass(WorkflowsResource::class)]
 #[CoversClass(WorkflowJobsSubResource::class)]
 final class WorkflowsResourceTest extends TestCase
 {
+    #[Test]
+    public function create_maps_job_queue_alias_to_queue_name(): void
+    {
+        $captured = null;
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->method('post')->willReturnCallback(
+            function (...$args) use (&$captured): array {
+                $captured = $args[1] ?? null;
+
+                return [
+                    'workflowId' => 'wf_1',
+                    'jobIds' => [
+                        ['key' => 'extract', 'jobId' => 'job_1'],
+                        ['key' => 'transform', 'jobId' => 'job_2'],
+                    ],
+                    'status' => 'pending',
+                ];
+            },
+        );
+
+        (new WorkflowsResource($httpClient))->create([
+            'name' => 'ETL Pipeline',
+            'jobs' => [
+                ['key' => 'extract', 'queue' => 'etl', 'payload' => ['step' => 'extract']],
+                [
+                    'key' => 'transform',
+                    'queue' => 'etl',
+                    'payload' => ['step' => 'transform'],
+                    'dependsOn' => ['extract'],
+                ],
+            ],
+        ]);
+
+        $this->assertIsArray($captured);
+        $body = Casing::keysToSnakeCase($captured);
+
+        $this->assertSame('etl', $body['jobs'][0]['queue_name']);
+        $this->assertArrayNotHasKey('queue', $body['jobs'][0]);
+        $this->assertSame(['extract'], $body['jobs'][1]['depends_on']);
+    }
+
     #[Test]
     public function list_jobs_reads_workflow_detail_not_a_jobs_subpath(): void
     {

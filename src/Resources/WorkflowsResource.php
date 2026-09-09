@@ -46,6 +46,8 @@ final class WorkflowsResource extends BaseResource
      */
     public function create(array $params): Workflow
     {
+        $params = $this->mapWriteParams($params);
+
         $response = $this->httpClient->post('workflows', $params);
 
         return Workflow::fromArray($response);
@@ -92,6 +94,41 @@ final class WorkflowsResource extends BaseResource
         $response = $this->httpClient->delete("workflows/{$workflowId}");
 
         return SuccessResponse::fromArray($response);
+    }
+
+    /**
+     * Map documented job aliases onto the names POST /workflows expects.
+     * The HTTP layer snake-cases camelCase keys (queueName -> queue_name).
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     */
+    private function mapWriteParams(array $params): array
+    {
+        if (!isset($params['jobs']) || !is_array($params['jobs'])) {
+            return $params;
+        }
+
+        foreach ($params['jobs'] as $i => $job) {
+            if (!is_array($job)) {
+                continue;
+            }
+            if (isset($job['queue']) && !isset($job['queueName']) && !isset($job['queue_name'])) {
+                $job['queueName'] = $job['queue'];
+                unset($job['queue']);
+            }
+            if (isset($job['name']) && !isset($job['key'])) {
+                $job['key'] = $job['name'];
+                unset($job['name']);
+            }
+            if (isset($job['dependencies']) && !isset($job['dependsOn']) && !isset($job['depends_on'])) {
+                $job['dependsOn'] = $job['dependencies'];
+                unset($job['dependencies']);
+            }
+            $params['jobs'][$i] = $job;
+        }
+
+        return $params;
     }
 }
 

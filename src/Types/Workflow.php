@@ -153,13 +153,12 @@ final readonly class WorkflowJobDefinition
     public function toArray(): array
     {
         return array_filter([
-            'name' => $this->name,
-            'queue' => $this->queue,
+            'key' => $this->name,
+            'queueName' => $this->queue,
             'payload' => $this->payload,
-            'dependencies' => $this->dependencies,
+            'dependsOn' => $this->dependencies,
             'priority' => $this->priority,
             'maxRetries' => $this->maxRetries,
-            'metadata' => $this->metadata,
         ], fn ($v) => $v !== null);
     }
 }
