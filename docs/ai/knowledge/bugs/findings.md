@@ -34,3 +34,4 @@
 | PH-29 | P1 | ~~`getUsage()` dropped `jobs_today`/`warnings`/`plan_display_name`~~ **FIXED** | `src/Types/Organization.php` |
 | PH-30 | P1 | ~~`workflows->get()` left `totalJobs`/`completedJobs`/`failedJobs` at 0~~ **FIXED** | `src/Types/Workflow.php`; GET detail puts counts under `progress` |
 | PH-31 | P2 | ~~`Job` dropped `job_type` from `GET /jobs` summaries~~ **FIXED** | `src/Types/Job.php`; `$jobType` from list `job_type` or GET `payload.job_type` |
+| PH-32 | P2 | ~~`JobStatus` omitted `processing`/`deadletter` (REST values); had `claimed` instead~~ **FIXED** | `src/Types/Job.php` |

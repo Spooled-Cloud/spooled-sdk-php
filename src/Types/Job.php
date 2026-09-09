@@ -10,11 +10,14 @@ namespace Spooled\Types;
 enum JobStatus: string
 {
     case PENDING = 'pending';
-    case CLAIMED = 'claimed';
+    case SCHEDULED = 'scheduled';
+    case PROCESSING = 'processing';
     case COMPLETED = 'completed';
     case FAILED = 'failed';
+    case DEADLETTER = 'deadletter';
     case CANCELLED = 'cancelled';
-    case SCHEDULED = 'scheduled';
+    /** REST never sends this; claim responses use status processing. */
+    case CLAIMED = 'claimed';
 }
 
 /**

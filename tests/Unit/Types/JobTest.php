@@ -12,6 +12,7 @@ use Spooled\Types\CreateJobParams;
 use Spooled\Types\Job;
 use Spooled\Types\JobList;
 use Spooled\Types\JobStats;
+use Spooled\Types\JobStatus;
 
 #[CoversClass(Job::class)]
 #[CoversClass(JobList::class)]
@@ -307,6 +308,14 @@ final class JobTest extends TestCase
         $this->assertNull($absent->leaseId);
         $this->assertSame('lease-abc', $camel->toArray()['leaseId']);
         $this->assertArrayNotHasKey('leaseId', $absent->toArray());
+    }
+
+    #[Test]
+    public function job_status_try_from_matches_rest_values(): void
+    {
+        $this->assertSame(JobStatus::PROCESSING, JobStatus::tryFrom('processing'));
+        $this->assertSame(JobStatus::DEADLETTER, JobStatus::tryFrom('deadletter'));
+        $this->assertNull(JobStatus::tryFrom('not-a-status'));
     }
 
     #[Test]
