@@ -45,4 +45,26 @@ final class OrganizationsResourceTest extends TestCase
         $this->assertSame('org_1', $got->organization->id);
         $this->assertSame('sp_live_abc123', $got->apiKey->key);
     }
+
+    #[Test]
+    public function check_slug_maps_suggestion_not_suggestions(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('get')
+            ->with('organizations/check-slug', ['slug' => 'acme'])
+            ->willReturn([
+                'available' => false,
+                'valid' => true,
+                'suggestion' => 'acme-2',
+            ]);
+
+        $got = (new OrganizationsResource($httpClient))->checkSlug('acme');
+
+        $this->assertFalse($got['available']);
+        $this->assertTrue($got['valid']);
+        $this->assertSame('acme-2', $got['suggestion']);
+        $this->assertNull($got['error']);
+        $this->assertArrayNotHasKey('suggestions', $got);
+    }
 }

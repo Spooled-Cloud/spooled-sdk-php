@@ -16,3 +16,4 @@
 | PH-11 | P2 | ~~`emailStart` dropped `emailSentTo`~~ **FIXED** | `src/Types/Auth.php`; body is `message` + `email_sent_to` |
 | PH-12 | P1 | ~~`Organization::$plan` always `free` (API sends `plan_tier`)~~ **FIXED** | `src/Types/Organization.php` |
 | PH-13 | P1 | ~~`organizations->create()` dropped the one-time `api_key`~~ **FIXED** | `src/Resources/OrganizationsResource.php` |
+| PH-14 | P2 | ~~`checkSlug` looked for `suggestions`; API sends `suggestion`/`valid`/`error`~~ **FIXED** | `src/Resources/OrganizationsResource.php` |

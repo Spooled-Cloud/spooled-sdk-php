@@ -12,3 +12,4 @@
 {"id":"PH-11","sev":"P2","summary":"emailStart dropped emailSentTo from POST /auth/email/start","path":"src/Types/Auth.php","status":"fixed","note":"Maps message+emailSentTo; success is derived on HTTP 200"}
 {"id":"PH-12","sev":"P1","summary":"Organization plan always free because fromArray read plan not planTier","path":"src/Types/Organization.php","status":"fixed","note":"GET org/list send plan_tier; usage endpoint still uses plan"}
 {"id":"PH-13","sev":"P1","summary":"organizations create dropped the one-time api_key","path":"src/Resources/OrganizationsResource.php","status":"fixed","note":"POST /organizations returns organization+api_key; create now returns CreateOrganizationResponse"}
+{"id":"PH-14","sev":"P2","summary":"checkSlug looked for suggestions the API never sends; dropped valid/error/suggestion","path":"src/Resources/OrganizationsResource.php","status":"fixed","note":"GET /organizations/check-slug is available+valid+error+suggestion"}

@@ -104,17 +104,22 @@ final class OrganizationsResource extends BaseResource
     }
 
     /**
-     * Check slug availability.
+     * Check slug availability (GET /organizations/check-slug?slug=).
      *
-     * @return array{available: bool, suggestions?: array<string>}
+     * @return array{available: bool, valid: bool, error: ?string, suggestion: ?string}
      */
     public function checkSlug(string $slug): array
     {
         $response = $this->httpClient->get('organizations/check-slug', ['slug' => $slug]);
 
+        $error = $response['error'] ?? null;
+        $suggestion = $response['suggestion'] ?? null;
+
         return [
             'available' => (bool) ($response['available'] ?? false),
-            'suggestions' => $response['suggestions'] ?? null,
+            'valid' => array_key_exists('valid', $response) ? (bool) $response['valid'] : true,
+            'error' => is_string($error) ? $error : null,
+            'suggestion' => is_string($suggestion) ? $suggestion : null,
         ];
     }
 

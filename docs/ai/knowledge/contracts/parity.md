@@ -11,3 +11,4 @@
 - Email login start is `POST /auth/email/start` → `{ message, emailSentTo }`. `success` is derived (HTTP 200); the API does not send it.
 - Organization JSON uses `plan_tier` (camelCase `planTier`), not `plan`. `GET /organizations/usage` is the exception: that body uses `plan`.
 - `POST /organizations` returns `{ organization, api_key }`. The key is shown once; `organizations->create()` returns `CreateOrganizationResponse`.
+- Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `suggestions`.

@@ -557,7 +557,7 @@ $orgs = $client->organizations->list();
 ```php
 $result = $client->organizations->checkSlug('my-company');
 echo "Available: " . ($result['available'] ? 'yes' : 'no') . "\n";
-echo "Suggestions: " . implode(', ', $result['suggestions'] ?? []) . "\n";
+echo "Suggestion: " . ($result['suggestion'] ?? '') . "\n";
 ```
 
 ### Generate Slug
