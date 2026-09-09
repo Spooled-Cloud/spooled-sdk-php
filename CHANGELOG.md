@@ -43,6 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Tracks Spooled backend 0.1.111.
 
+### Fixed
+
+- `auth->checkEmail()` now maps `available` and `signupEnabled` from
+  `GET /auth/check-email`. It previously read `canRegister` (never sent) and
+  defaulted it to true, so a closed signup still looked open.
+
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 
 ### Removed

@@ -132,14 +132,16 @@ final readonly class TokenValidation
 }
 
 /**
- * Email availability check response.
+ * Email availability check response (GET /auth/check-email).
  */
 final readonly class EmailCheckResponse
 {
     public function __construct(
         public bool $exists,
         public bool $canRegister,
-        public ?string $provider,
+        public ?string $provider = null,
+        public bool $available = false,
+        public bool $signupEnabled = true,
     ) {
     }
 
@@ -150,10 +152,23 @@ final readonly class EmailCheckResponse
      */
     public static function fromArray(array $data): self
     {
+        $exists = (bool) ($data['exists'] ?? false);
+        $available = array_key_exists('available', $data)
+            ? (bool) $data['available']
+            : !$exists;
+        $signupEnabled = array_key_exists('signupEnabled', $data) || array_key_exists('signup_enabled', $data)
+            ? (bool) ($data['signupEnabled'] ?? $data['signup_enabled'] ?? false)
+            : true;
+        $canRegister = array_key_exists('canRegister', $data)
+            ? (bool) $data['canRegister']
+            : ($available && $signupEnabled);
+
         return new self(
-            exists: (bool) ($data['exists'] ?? false),
-            canRegister: (bool) ($data['canRegister'] ?? true),
+            exists: $exists,
+            canRegister: $canRegister,
             provider: isset($data['provider']) ? (string) $data['provider'] : null,
+            available: $available,
+            signupEnabled: $signupEnabled,
         );
     }
 }

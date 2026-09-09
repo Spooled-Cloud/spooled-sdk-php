@@ -8,3 +8,4 @@
 {"id":"PH-08","sev":"P2","summary":"gRPC timeout option was not passed to unary calls","path":"src/Grpc/SpooledGrpcClient.php","status":"fixed","note":"1.1.0 converts seconds to grpc timeout microseconds for unary calls"}
 {"id":"PH-09","sev":"P2","summary":"realtime WebSocket example built wrong URL and used raw API key","path":"examples/realtime-example.php","status":"fixed","note":"1.1.0 uses base WS URL and ACCESS_TOKEN JWT"}
 {"id":"PS-W1","sev":"P2","summary":"PHP Worker type drifted from REST worker JSON","path":"src/Types/Worker.php","status":"fixed","note":"Fixed in 1.1.0: maps public REST fields; heartbeat is void"}
+{"id":"PH-10","sev":"P1","summary":"checkEmail dropped available/signupEnabled and defaulted canRegister true","path":"src/Types/Auth.php","status":"fixed","note":"Maps GET /auth/check-email body; canRegister is derived from available && signupEnabled"}

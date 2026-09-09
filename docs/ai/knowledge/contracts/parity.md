@@ -7,3 +7,4 @@
 - Worker progress/log emits local job logs only; Go remains the SDK with backend-persisted `POST /jobs/{id}/progress`. Lease renew needs pcntl/posix.
 - Workflow job list/get/status are not their own REST routes. `GET /workflows/{id}` carries jobs + dependencies; `workflows->jobs->list()` reads that document. `POST /jobs/{id}/dependencies` takes `depends_on` + `dependency_mode` and returns `dependencies_added` / `dependencies_met`.
 - `GET /jobs/{id}/dependencies` is `{ jobId, dependencies, dependents, dependenciesMet }` with `{ jobId, queueName, status }` edges. `isMet` is derived from `status === completed`.
+- Email availability is `GET /auth/check-email?email=`. The body is `available`, `exists`, `signupEnabled`. `canRegister` is derived (`available && signupEnabled`); the API does not send it.
