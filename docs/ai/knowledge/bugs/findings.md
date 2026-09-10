@@ -58,3 +58,4 @@
 | PH-53 | P1 | ~~`organizations->removeMember()` DELETEd `/organizations/{id}/members/{id}` (404)~~ **FIXED** | `src/Resources/OrganizationsResource.php`; members are API keys → `DELETE /api-keys/{id}` |
 | PH-54 | P1 | ~~Job/schedule `fromArray` dropped non-object JSON payload/result/tags/metadata~~ **FIXED** | `src/Types/Job.php`; `src/Types/Schedule.php`; backend is `serde_json::Value` |
 | PH-55 | P1 | ~~`Job`/`Schedule` dropped `timeout_seconds` (required on GET Job)~~ **FIXED** | `src/Types/Job.php`; `src/Types/Schedule.php` |
+| PH-56 | P1 | ~~`WorkflowJob` dropped non-object payload/result, `attempt`, and error `message`~~ **FIXED** | `src/Types/Workflow.php`; GET detail jobs send `attempt`/`timeout_ms`/`error:{message}` |

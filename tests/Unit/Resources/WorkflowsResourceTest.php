@@ -96,6 +96,40 @@ final class WorkflowsResourceTest extends TestCase
     }
 
     #[Test]
+    public function list_jobs_keeps_non_object_payload_and_maps_attempt_and_error_message(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->method('get')->willReturn([
+            'id' => 'wf_1',
+            'name' => 'ETL',
+            'status' => 'failed',
+            'progress' => ['total' => 1, 'completed' => 0, 'failed' => 1, 'pending' => 0, 'processing' => 0],
+            'jobs' => [
+                [
+                    'id' => 'job_1',
+                    'queue' => 'etl',
+                    'payload' => 'plain-string',
+                    'result' => true,
+                    'status' => 'failed',
+                    'attempt' => 2,
+                    'maxRetries' => 3,
+                    'error' => ['type' => 'runtime', 'message' => 'boom'],
+                    'workflowId' => 'wf_1',
+                ],
+            ],
+            'dependencies' => [],
+        ]);
+
+        $jobs = (new WorkflowsResource($httpClient))->jobs->list('wf_1');
+
+        $this->assertCount(1, $jobs);
+        $this->assertSame('plain-string', $jobs[0]->payload);
+        $this->assertTrue($jobs[0]->result);
+        $this->assertSame(2, $jobs[0]->retryCount);
+        $this->assertSame('boom', $jobs[0]->error);
+    }
+
+    #[Test]
     public function get_dependencies_maps_backend_shape(): void
     {
         $httpClient = $this->createMock(HttpClient::class);

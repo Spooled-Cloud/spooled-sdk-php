@@ -185,10 +185,10 @@ final readonly class WorkflowJob
         /** @var array<string> */
         public array $dependsOn,
         public ?string $error,
-        /** @var array<string, mixed>|null */
-        public ?array $result,
-        /** @var array<string, mixed>|null */
-        public ?array $payload,
+        /** Any JSON, or null when the API omitted result. */
+        public mixed $result,
+        /** Any JSON, or null when the API omitted payload. */
+        public mixed $payload,
         public int $priority,
         public int $retryCount,
         public int $maxRetries,
@@ -214,16 +214,31 @@ final readonly class WorkflowJob
             dependsOn: is_array($data['dependsOn'] ?? $data['dependencies'] ?? null)
                 ? ($data['dependsOn'] ?? $data['dependencies'])
                 : [],
-            error: isset($data['error']) ? (string) $data['error'] : null,
-            result: is_array($data['result'] ?? null) ? $data['result'] : null,
-            payload: is_array($data['payload'] ?? null) ? $data['payload'] : null,
+            error: self::errorFrom($data['error'] ?? null),
+            result: array_key_exists('result', $data) ? $data['result'] : null,
+            payload: array_key_exists('payload', $data) ? $data['payload'] : null,
             priority: (int) ($data['priority'] ?? 0),
-            retryCount: (int) ($data['retryCount'] ?? 0),
+            retryCount: (int) ($data['retryCount'] ?? $data['attempt'] ?? 0),
             maxRetries: (int) ($data['maxRetries'] ?? 3),
             createdAt: isset($data['createdAt']) ? (string) $data['createdAt'] : null,
             startedAt: isset($data['startedAt']) ? (string) $data['startedAt'] : null,
             completedAt: isset($data['completedAt']) ? (string) $data['completedAt'] : null,
         );
+    }
+
+    /**
+     * Workflow job error is a string or `{type, message, stack}`.
+     */
+    private static function errorFrom(mixed $error): ?string
+    {
+        if (is_string($error) && $error !== '') {
+            return $error;
+        }
+        if (is_array($error) && isset($error['message']) && is_string($error['message']) && $error['message'] !== '') {
+            return $error['message'];
+        }
+
+        return null;
     }
 }
 

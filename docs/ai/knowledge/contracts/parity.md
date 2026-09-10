@@ -11,6 +11,7 @@
 - `POST /workflows` job definitions require `key` and `queue_name` (plus `depends_on`). Documented PHP `queue` is mapped to `queueName` before the HTTP client snake-cases it.
 - `POST /workflows` returns `{ workflow_id, job_ids, status }`, not a full `Workflow`. PHP `create()` backfills `name`/`totalJobs` from the request.
 - `GET /workflows/{id}` is `WorkflowDetailResponse`: job counts are under `progress` (`total`/`completed`/`failed`), not top-level `total_jobs` like list/cancel/retry. `Workflow::fromArray` maps those onto `$totalJobs`/`$completedJobs`/`$failedJobs`.
+- Workflow detail jobs send `payload`/`result` as `serde_json::Value`, `attempt` (not `retry_count`), and `error` as `{type, message, stack}`. PHP `WorkflowJob` keeps non-object JSON, maps `$retryCount` from `attempt`, and `$error` from `error.message`.
 - `GET /jobs/{id}/dependencies` is `{ jobId, dependencies, dependents, dependenciesMet }` with `{ jobId, queueName, status }` edges. `isMet` is derived from `status === completed`.
 - Email availability is `GET /auth/check-email?email=`. The body is `available`, `exists`, `signupEnabled`. `canRegister` is derived (`available && signupEnabled`); the API does not send it.
 - `GET /auth/me` is a JWT session (`organization_id`, `api_key_id`, `queues`, `issued_at`, `expires_at`, optional `organization`), not an email user. PHP `auth->me()` returns `CurrentUserResponse`.
