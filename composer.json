@@ -76,7 +76,7 @@
         "test:scripts": "phpunit --testsuite=scripts --no-coverage",
         "test:coverage": "phpunit --testsuite=unit --coverage-html coverage --coverage-text",
         "test:all": "phpunit --no-coverage",
-        "analyse": "phpstan analyse",
+        "analyse": "phpstan analyse --memory-limit=1G",
         "format": "php-cs-fixer fix",
         "format:check": "php-cs-fixer fix --dry-run --diff",
         "scripts:test-local": "php scripts/test-local.php",

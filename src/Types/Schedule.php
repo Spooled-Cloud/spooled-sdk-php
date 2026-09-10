@@ -32,6 +32,8 @@ final readonly class Schedule
         public ?string $updatedAt,
         /** Job timeout in seconds (API `timeout_seconds`). */
         public int $timeoutSeconds = 300,
+        /** Tags applied to jobs this schedule creates. Any JSON (`schedules.tags`). */
+        public mixed $tags = null,
     ) {
     }
 
@@ -78,6 +80,7 @@ final readonly class Schedule
             updatedAt: isset($data['updated_at']) ? (string) $data['updated_at']
                 : (isset($data['updatedAt']) ? (string) $data['updatedAt'] : null),
             timeoutSeconds: (int) ($data['timeout_seconds'] ?? $data['timeoutSeconds'] ?? 300),
+            tags: array_key_exists('tags', $data) ? $data['tags'] : null,
         );
     }
 }
@@ -138,6 +141,8 @@ final readonly class ScheduleHistoryEntry
         public ?string $error,
         public ?string $executedAt,
         public ?float $duration,
+        /** `schedule_runs.completed_at`; null while a run is still pending. */
+        public ?string $completedAt = null,
     ) {
     }
 
@@ -161,6 +166,8 @@ final readonly class ScheduleHistoryEntry
                 : (isset($data['startedAt']) ? (string) $data['startedAt']
                 : (isset($data['started_at']) ? (string) $data['started_at'] : null)),
             duration: isset($data['duration']) ? (float) $data['duration'] : null,
+            completedAt: isset($data['completedAt']) ? (string) $data['completedAt']
+                : (isset($data['completed_at']) ? (string) $data['completed_at'] : null),
         );
     }
 }

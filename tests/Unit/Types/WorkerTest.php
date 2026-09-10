@@ -83,4 +83,15 @@ final class WorkerTest extends TestCase
         $this->assertSame(5, $list->workers[0]->maxConcurrency);
         $this->assertSame(1, $list->workers[0]->currentJobs);
     }
+
+    public function test_from_array_keeps_non_object_json_metadata(): void
+    {
+        $worker = Worker::fromArray([
+            'id' => 'wrk-json',
+            'queueName' => 'default',
+            'metadata' => 'v1',
+        ]);
+
+        $this->assertSame('v1', $worker->metadata);
+    }
 }

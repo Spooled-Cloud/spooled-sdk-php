@@ -5,43 +5,11 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.0] - 2026-08-16
+## [1.2.0] - 2026-09-10
 
-### Added
-
-- Optional stable `worker_id` on worker registration. Supplying the same id
-  across restarts makes registration an upsert, so a restarting worker reuses
-  its row instead of leaving the old one against the plan worker cap until the
-  stale-worker reaper clears it (~2 minutes). Omitting it keeps the previous
-  behaviour of a server-minted UUID. An id owned by another organization
-  returns 409.
-- `auto_disabled` in the outgoing-webhook `last_status` domain. The backend now
-  disables a webhook after 20 consecutive failed deliveries; re-enable it by
-  setting `enabled: true`, which is charged against the plan webhook cap and can
-  therefore return `429 QUOTA_EXCEEDED`.
-
-### Changed
-
-- Webhook updates can now express clearing the signing secret distinctly from
-  leaving it alone. Backend 0.1.111 treats an explicit `null` as a destructive
-  clear, so an untouched secret must be omitted rather than serialised.
-- `failure_count` on outgoing webhooks is now counted once per delivery rather
-  than once per retry attempt, so for the same failures it is roughly 5x smaller
-  than before.
-- Documented that `last_used` on API keys is coarse (written at most once per
-  key per five minutes) and that webhook delivery history is retained by plan
-  rather than kept indefinitely.
-
-### Note
-
-- Backend 0.1.111 no longer accepts API keys in the query string on REST
-  endpoints. This SDK sends credentials as an `Authorization` header on REST;
-  SSE and WebSocket connections continue to use the query string, which the
-  backend still supports for those routes.
-
-## [Unreleased]
-
-Tracks Spooled backend 0.1.111.
+Tracks Spooled backend `0.1.112`. A contract-parity pass: every fix below is a
+place where this SDK's route, request shape, or response mapping disagreed with
+what the API actually serves.
 
 ### Fixed
 
@@ -165,25 +133,50 @@ Tracks Spooled backend 0.1.111.
   `GET /organizations/usage`. Those fields were previously dropped, so daily
   job quota was invisible.
 
-### Removed
+- `Schedule::$tags` is now read from `GET /schedules/{id}` and backfilled from a
+  `create()` call. `schedules.tags` exists on the API but the type dropped it.
+- `ScheduleHistoryEntry::$completedAt` is now read from `schedule_runs.completed_at`,
+  so a run's finish time is no longer discarded.
+- `Worker::$metadata`, `Workflow::$metadata` and `WebhookDelivery::$payload`
+  accept any JSON. They coerced anything that was not a PHP array to `null`
+  (or `[]`), so an array or scalar value from the API was silently dropped;
+  all three are `serde_json::Value` on the backend.
+- Job list and DLQ summaries read the `job_type` and `last_error` that backend
+  `0.1.112` adds to `JobSummary`.
 
-- The `api_key` query parameter is no longer appended to `GET /metrics`. Credentials travel in the `Authorization` header only, which is what that request already used; the API now rejects query-string credentials on REST, and a query string reaches proxy and CDN access logs, tracing spans, browser history and the `Referer` header (CWE-598). `MetricsResource` is unaffected.
+## [1.1.0] - 2026-08-16
 
 ### Added
 
-- `Webhook::$lastStatus` (`success`, `failed`, or `auto_disabled`), so an auto-disabled webhook can be told apart from one disabled deliberately.
-- `WorkerConfig::$workerId` and an optional `workerId` key on `workers->register()`: a stable id (1-128 chars, `[A-Za-z0-9._-]`) makes registration an upsert, so a restarting worker reuses its row instead of leaving the old one against the plan worker cap until the stale-worker reaper clears it. `SpooledWorker` forwards it when configured. An id owned by another organization returns 409.
+- Optional stable `worker_id` on worker registration. Supplying the same id
+  across restarts makes registration an upsert, so a restarting worker reuses
+  its row instead of leaving the old one against the plan worker cap until the
+  stale-worker reaper clears it (~2 minutes). Omitting it keeps the previous
+  behaviour of a server-minted UUID. An id owned by another organization
+  returns 409.
+- `auto_disabled` in the outgoing-webhook `last_status` domain. The backend now
+  disables a webhook after 20 consecutive failed deliveries; re-enable it by
+  setting `enabled: true`, which is charged against the plan webhook cap and can
+  therefore return `429 QUOTA_EXCEEDED`.
 
 ### Changed
 
-- `webhooks->enable()` / `webhooks->disable()` now issue `PUT /outgoing-webhooks/{id}` with `{"enabled": …}`, the supported route; the `/enable` and `/disable` paths they previously posted to do not exist. `enable()` is the recovery path after a webhook is auto-disabled following 20 consecutive failed deliveries, and is charged against the plan webhook cap, so it can raise `RateLimitError` with `errorCode` `"QUOTA_EXCEEDED"`.
-- `Webhook::$lastDeliveryAt` now reads the `last_triggered_at` field the API actually returns.
+- Webhook updates can now express clearing the signing secret distinctly from
+  leaving it alone. Backend 0.1.111 treats an explicit `null` as a destructive
+  clear, so an untouched secret must be omitted rather than serialised.
+- `failure_count` on outgoing webhooks is now counted once per delivery rather
+  than once per retry attempt, so for the same failures it is roughly 5x smaller
+  than before.
+- Documented that `last_used` on API keys is coarse (written at most once per
+  key per five minutes) and that webhook delivery history is retained by plan
+  rather than kept indefinitely.
 
-### Documentation
+### Note
 
-- `webhooks->update()`: `secret` is three-state - omit to keep, `null` to clear (deliveries go out unsigned, with no `X-Spooled-Signature`), a string to replace. Params arrays built with null defaults now wipe the secret.
-- Webhook delivery history is retained for the plan's window (free 1 day, starter 7, pro 30, enterprise 90) rather than kept forever, and a swept delivery can no longer be retried.
-- `ApiKey::$lastUsedAt` is written at most once per key per five minutes, so it can be up to five minutes stale.
+- Backend 0.1.111 no longer accepts API keys in the query string on REST
+  endpoints. This SDK sends credentials as an `Authorization` header on REST;
+  SSE and WebSocket connections continue to use the query string, which the
+  backend still supports for those routes.
 
 ## [1.0.21] - 2026-07-19
 

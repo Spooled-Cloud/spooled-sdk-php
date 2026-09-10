@@ -286,7 +286,7 @@ final class WorkflowJobsSubResource extends BaseResource
                 }
             }
             $item['dependsOn'] = $dependsOn;
-            $item['workflowId'] = $item['workflowId'] ?? $workflowId;
+            $item['workflowId'] ??= $workflowId;
             if (isset($item['error']) && is_array($item['error'])) {
                 $item['error'] = (string) ($item['error']['message'] ?? '');
             }

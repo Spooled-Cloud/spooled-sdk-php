@@ -29,5 +29,7 @@ final class ScheduleHistoryEntryTest extends TestCase
         $this->assertSame('2024-01-01T00:00:00Z', $got->executedAt);
         $this->assertSame('job_1', $got->jobId);
         $this->assertSame('failed', $got->status);
+        $this->assertTrue(property_exists($got, 'completedAt'));
+        $this->assertSame('2024-01-01T00:00:01Z', $got->completedAt);
     }
 }

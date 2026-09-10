@@ -187,7 +187,7 @@ final class SchedulesResource extends BaseResource
      */
     private function applyCreateFallbacks(array $response, array $params): array
     {
-        foreach (['queueName', 'payloadTemplate', 'priority', 'maxRetries', 'timeoutSeconds', 'description', 'metadata'] as $key) {
+        foreach (['queueName', 'payloadTemplate', 'priority', 'maxRetries', 'timeoutSeconds', 'description', 'metadata', 'tags'] as $key) {
             if (!array_key_exists($key, $response) && array_key_exists($key, $params)) {
                 $response[$key] = $params[$key];
             }

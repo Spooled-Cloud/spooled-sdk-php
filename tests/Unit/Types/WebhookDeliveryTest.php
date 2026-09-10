@@ -47,4 +47,18 @@ final class WebhookDeliveryTest extends TestCase
         $this->assertSame(2, $got->attemptNumber);
         $this->assertSame('ok', $got->response);
     }
+
+    #[Test]
+    public function from_array_keeps_non_object_json_payload(): void
+    {
+        $got = WebhookDelivery::fromArray([
+            'id' => 'del_3',
+            'webhookId' => 'wh_1',
+            'event' => 'job.completed',
+            'status' => 'success',
+            'payload' => 'hello',
+        ]);
+
+        $this->assertSame('hello', $got->payload);
+    }
 }

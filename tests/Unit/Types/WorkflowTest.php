@@ -56,4 +56,17 @@ final class WorkflowTest extends TestCase
         $this->assertSame(3, $got->completedJobs);
         $this->assertSame(1, $got->failedJobs);
     }
+
+    #[Test]
+    public function from_array_keeps_non_object_json_metadata(): void
+    {
+        $got = Workflow::fromArray([
+            'id' => 'wf_json',
+            'name' => 'ETL',
+            'status' => 'pending',
+            'metadata' => 3,
+        ]);
+
+        $this->assertSame(3, $got->metadata);
+    }
 }

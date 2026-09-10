@@ -139,8 +139,8 @@ final readonly class WebhookDelivery
         public string $status,
         public int $statusCode,
         public int $attemptNumber,
-        /** @var array<string, mixed> */
-        public array $payload,
+        /** Any JSON — the API stores the delivery payload as `serde_json::Value`. */
+        public mixed $payload,
         public ?string $response,
         public ?string $error,
         public ?float $duration,
@@ -168,7 +168,7 @@ final readonly class WebhookDelivery
                 ?? $data['attempt']
                 ?? 1
             ),
-            payload: is_array($data['payload'] ?? null) ? $data['payload'] : [],
+            payload: array_key_exists('payload', $data) ? $data['payload'] : [],
             response: isset($data['responseBody']) ? (string) $data['responseBody']
                 : (isset($data['response_body']) ? (string) $data['response_body']
                 : (isset($data['response']) ? (string) $data['response'] : null)),

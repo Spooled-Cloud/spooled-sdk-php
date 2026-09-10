@@ -26,7 +26,6 @@ final readonly class Worker
 {
     /**
      * @param list<string> $queueNames
-     * @param array<string, mixed>|null $metadata
      */
     public function __construct(
         public string $id,
@@ -38,7 +37,8 @@ final readonly class Worker
         public int $currentJobs,
         public string $status,
         public ?string $lastHeartbeat,
-        public ?array $metadata,
+        /** Any JSON — `WorkerResponse.metadata` is `serde_json::Value`. */
+        public mixed $metadata,
         public ?string $version,
         public ?string $organizationId,
         public ?string $registeredAt,
@@ -85,7 +85,7 @@ final readonly class Worker
             lastHeartbeat: self::optionalString(
                 $data['lastHeartbeat'] ?? $data['last_heartbeat'] ?? null,
             ),
-            metadata: is_array($data['metadata'] ?? null) ? $data['metadata'] : null,
+            metadata: array_key_exists('metadata', $data) ? $data['metadata'] : null,
             version: self::optionalString($data['version'] ?? null),
             organizationId: self::optionalString(
                 $data['organizationId'] ?? $data['organization_id'] ?? null,

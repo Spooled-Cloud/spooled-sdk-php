@@ -27,8 +27,8 @@ final readonly class Workflow
         public string $status,
         public ?string $organizationId,
         public ?string $description,
-        /** @var array<string, mixed>|null */
-        public ?array $metadata,
+        /** Any JSON — `Workflow.metadata` is `Option<serde_json::Value>`. */
+        public mixed $metadata,
         public int $totalJobs,
         public int $completedJobs,
         public int $failedJobs,
@@ -76,7 +76,7 @@ final readonly class Workflow
             organizationId: isset($data['organization_id']) ? (string) $data['organization_id']
                 : (isset($data['organizationId']) ? (string) $data['organizationId'] : null),
             description: isset($data['description']) ? (string) $data['description'] : null,
-            metadata: is_array($data['metadata'] ?? null) ? $data['metadata'] : null,
+            metadata: array_key_exists('metadata', $data) ? $data['metadata'] : null,
             totalJobs: (int) ($data['total_jobs'] ?? $data['totalJobs'] ?? $progress['total'] ?? (is_array($jobs) ? count($jobs) : $detailJobCount)),
             completedJobs: (int) ($data['completed_jobs'] ?? $data['completedJobs'] ?? $progress['completed'] ?? 0),
             failedJobs: (int) ($data['failed_jobs'] ?? $data['failedJobs'] ?? $progress['failed'] ?? 0),

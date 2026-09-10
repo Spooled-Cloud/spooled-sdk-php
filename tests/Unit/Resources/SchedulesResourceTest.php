@@ -220,6 +220,39 @@ final class SchedulesResourceTest extends TestCase
     }
 
     #[Test]
+    public function from_array_keeps_tags(): void
+    {
+        $schedule = Schedule::fromArray([
+            'id' => 'sch-tags',
+            'name' => 'Ping',
+            'queueName' => 'default',
+            'cronExpression' => '* * * * * *',
+            'tags' => ['urgent'],
+        ]);
+
+        $this->assertTrue(property_exists($schedule, 'tags'));
+        $this->assertSame(['urgent'], $schedule->tags);
+    }
+
+    #[Test]
+    public function create_response_backfills_tags(): void
+    {
+        $captured = null;
+        $resource = $this->makeResource($this->partialCreateResponse(), $captured);
+
+        $schedule = $resource->create([
+            'name' => 'Daily Report',
+            'queue' => 'reports',
+            'schedule' => '0 9 * * *',
+            'payload' => ['type' => 'daily'],
+            'tags' => ['urgent'],
+        ]);
+
+        $this->assertTrue(property_exists($schedule, 'tags'));
+        $this->assertSame(['urgent'], $schedule->tags);
+    }
+
+    #[Test]
     public function history_parses_a_bare_top_level_array(): void
     {
         $httpClient = $this->createMock(HttpClient::class);
