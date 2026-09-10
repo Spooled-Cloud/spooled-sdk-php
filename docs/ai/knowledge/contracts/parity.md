@@ -18,6 +18,7 @@
 - `POST /auth/logout` blacklists the access token from `Authorization`. The refresh JWT stays usable until expiry unless `refresh_token` is in the body. PHP `auth->logout()` sends the stored refresh token (or an explicit argument).
 - Email login start is `POST /auth/email/start` → `{ message, emailSentTo }`. `success` is derived (HTTP 200); the API does not send it.
 - `POST /auth/email/verify` is tagged `{type: login, access_token, ...}` or `{type: signup, signup_token, email, expires_in}`. PHP `emailVerify()` returns `EmailVerifyResponse`; mapping signup onto `AuthTokens` dropped `signup_token`.
+- There is no `POST /auth/register`. PHP `auth->register()` is `POST /auth/signup/complete` (`signup_token`, `name`, `slug`) → org + raw `api_key` string + tokens. Mapping that onto `AuthTokens` would drop the one-time key.
 - Organization JSON uses `plan_tier` (camelCase `planTier`), not `plan`. `GET /organizations/usage` is the exception: that body uses `plan`.
 - Admin org update is `PATCH /admin/organizations/{id}`, not PUT. PHP `admin->updateOrganization()` must PATCH (Node/Python already do).
 - Admin hard delete is `DELETE /admin/organizations/{id}?hard_delete=true`. PHP `deleteOrganization($id, true)` sends that query.

@@ -314,3 +314,54 @@ final readonly class EmailVerifyResponse
         );
     }
 }
+
+/**
+ * POST /auth/signup/complete — org, one-time API key, and login tokens.
+ *
+ * `api_key` is a raw string (shown once), not the `{id,key,name}` object
+ * from POST /organizations.
+ */
+final readonly class CompleteSignupResponse
+{
+    public function __construct(
+        public string $accessToken,
+        public string $refreshToken,
+        public string $tokenType,
+        public int $expiresIn,
+        public string $apiKey,
+        public ?string $organizationId = null,
+        public ?string $organizationName = null,
+        public ?string $organizationSlug = null,
+        public ?string $billingEmail = null,
+    ) {
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public static function fromArray(array $data): self
+    {
+        $org = is_array($data['organization'] ?? null) ? $data['organization'] : [];
+        $apiKey = $data['apiKey'] ?? $data['api_key'] ?? '';
+        $access = $data['accessToken'] ?? $data['access_token'] ?? '';
+        $refresh = $data['refreshToken'] ?? $data['refresh_token'] ?? '';
+        $tokenType = $data['tokenType'] ?? $data['token_type'] ?? 'Bearer';
+        $expires = $data['expiresIn'] ?? $data['expires_in'] ?? 0;
+        $orgId = $org['id'] ?? null;
+        $orgName = $org['name'] ?? null;
+        $orgSlug = $org['slug'] ?? null;
+        $billing = $org['billingEmail'] ?? $org['billing_email'] ?? null;
+
+        return new self(
+            accessToken: (string) $access,
+            refreshToken: (string) $refresh,
+            tokenType: (string) $tokenType,
+            expiresIn: (int) $expires,
+            apiKey: is_string($apiKey) ? $apiKey : '',
+            organizationId: is_string($orgId) && $orgId !== '' ? $orgId : null,
+            organizationName: is_string($orgName) && $orgName !== '' ? $orgName : null,
+            organizationSlug: is_string($orgSlug) && $orgSlug !== '' ? $orgSlug : null,
+            billingEmail: is_string($billing) && $billing !== '' ? $billing : null,
+        );
+    }
+}

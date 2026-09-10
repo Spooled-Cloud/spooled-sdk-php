@@ -45,6 +45,10 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `auth->register()` now calls `POST /auth/signup/complete` and returns
+  `CompleteSignupResponse` (tokens plus the one-time `api_key` string). It
+  previously POSTed `/auth/register`, which is not a backend route, so every
+  signup 404'd and would have dropped the raw key even on success.
 - `auth->emailVerify()` now returns `EmailVerifyResponse` for the tagged
   `{type: login|signup}` body. It previously mapped onto `AuthTokens`, so a
   new email left `accessToken` empty and dropped `signup_token`.

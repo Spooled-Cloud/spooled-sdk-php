@@ -7,12 +7,14 @@ namespace Spooled\Tests\Unit\Types;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Spooled\Types\CompleteSignupResponse;
 use Spooled\Types\CurrentUserResponse;
 use Spooled\Types\EmailCheckResponse;
 use Spooled\Types\EmailLoginStartResponse;
 use Spooled\Types\EmailVerifyResponse;
 use Spooled\Types\TokenValidation;
 
+#[CoversClass(CompleteSignupResponse::class)]
 #[CoversClass(CurrentUserResponse::class)]
 #[CoversClass(EmailCheckResponse::class)]
 #[CoversClass(EmailLoginStartResponse::class)]
@@ -161,5 +163,30 @@ final class AuthTest extends TestCase
         $this->assertSame(900, $got->expiresIn);
         $this->assertNull($got->accessToken);
         $this->assertNull($got->refreshToken);
+    }
+
+    #[Test]
+    public function complete_signup_maps_raw_api_key_and_tokens(): void
+    {
+        $got = CompleteSignupResponse::fromArray([
+            'organization' => [
+                'id' => 'org_1',
+                'name' => 'Acme',
+                'slug' => 'acme',
+                'billingEmail' => 'new@user.com',
+            ],
+            'apiKey' => 'sp_live_once',
+            'accessToken' => 'at_1',
+            'refreshToken' => 'rt_1',
+            'tokenType' => 'Bearer',
+            'expiresIn' => 86400,
+        ]);
+
+        $this->assertSame('sp_live_once', $got->apiKey);
+        $this->assertSame('at_1', $got->accessToken);
+        $this->assertSame('rt_1', $got->refreshToken);
+        $this->assertSame('org_1', $got->organizationId);
+        $this->assertSame('acme', $got->organizationSlug);
+        $this->assertSame('new@user.com', $got->billingEmail);
     }
 }

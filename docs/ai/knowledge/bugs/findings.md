@@ -54,3 +54,4 @@
 | PH-49 | P2 | ~~`HealthStatus::$checks` always null (GET `/health` sends `database`/`cache`)~~ **FIXED** | `src/Types/Common.php` |
 | PH-50 | P1 | ~~`ingest->custom()` returned `void` and dropped `jobId` after backend started sending `WebhookResponse`~~ **FIXED** | `src/Resources/WebhookIngestionResource.php` |
 | PH-51 | P1 | ~~`auth->emailVerify()` mapped signup `{type,signup_token}` onto empty `AuthTokens`~~ **FIXED** | `src/Types/Auth.php`; `src/Resources/AuthResource.php`; POST `/auth/email/verify` is tagged login\|signup |
+| PH-52 | P1 | ~~`auth->register()` POSTed `/auth/register` (404)~~ **FIXED** | `src/Resources/AuthResource.php`; `POST /auth/signup/complete` → tokens + raw `api_key` |

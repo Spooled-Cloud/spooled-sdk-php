@@ -6,6 +6,7 @@ namespace Spooled\Resources;
 
 use InvalidArgumentException;
 use Spooled\Types\AuthTokens;
+use Spooled\Types\CompleteSignupResponse;
 use Spooled\Types\CurrentUserResponse;
 use Spooled\Types\EmailCheckResponse;
 use Spooled\Types\EmailLoginStartResponse;
@@ -131,15 +132,20 @@ final class AuthResource extends BaseResource
     }
 
     /**
-     * Register a new user.
+     * Complete email signup after verify returned type signup.
      *
-     * @param array<string, mixed> $params
+     * There is no POST /auth/register. The backend contract is
+     * POST /auth/signup/complete with signupToken, name, and slug. The body
+     * includes the one-time api_key as a string (not the POST /organizations
+     * {id,key,name} object). Mapping that onto AuthTokens dropped the key.
+     *
+     * @param array<string, mixed> $params {signupToken, name, slug}
      */
-    public function register(array $params): AuthTokens
+    public function register(array $params): CompleteSignupResponse
     {
-        $response = $this->httpClient->post('auth/register', $params);
+        $response = $this->httpClient->post('auth/signup/complete', $params);
 
-        return AuthTokens::fromArray($response);
+        return CompleteSignupResponse::fromArray($response);
     }
 
     /**

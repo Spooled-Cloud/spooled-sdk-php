@@ -65,4 +65,40 @@ final class AuthResourceTest extends TestCase
         $this->assertSame('signup-token-123', $got->signupToken);
         $this->assertNull($got->accessToken);
     }
+
+    #[Test]
+    public function register_posts_signup_complete_not_missing_register_route(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('post')
+            ->with('auth/signup/complete', [
+                'signupToken' => 'tok',
+                'name' => 'Acme',
+                'slug' => 'acme',
+            ])
+            ->willReturn([
+                'organization' => [
+                    'id' => 'org_1',
+                    'name' => 'Acme',
+                    'slug' => 'acme',
+                    'billingEmail' => 'new@user.com',
+                ],
+                'apiKey' => 'sp_live_once',
+                'accessToken' => 'at_1',
+                'refreshToken' => 'rt_1',
+                'tokenType' => 'Bearer',
+                'expiresIn' => 86400,
+            ]);
+
+        $got = (new AuthResource($httpClient))->register([
+            'signupToken' => 'tok',
+            'name' => 'Acme',
+            'slug' => 'acme',
+        ]);
+
+        $this->assertSame('sp_live_once', $got->apiKey);
+        $this->assertSame('at_1', $got->accessToken);
+        $this->assertSame('org_1', $got->organizationId);
+    }
 }
