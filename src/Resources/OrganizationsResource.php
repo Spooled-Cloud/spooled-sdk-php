@@ -180,10 +180,15 @@ final class OrganizationsResource extends BaseResource
 
     /**
      * Remove a member from an organization.
+     *
+     * There is no DELETE /organizations/{id}/members/{memberId}. GET
+     * /organizations/{id}/members is backed by active API keys (`id` is the
+     * key id), so this revokes `DELETE /api-keys/{memberId}`.
      */
     public function removeMember(string $orgId, string $memberId): void
     {
-        $this->httpClient->delete("organizations/{$orgId}/members/{$memberId}");
+        unset($orgId);
+        $this->httpClient->delete("api-keys/{$memberId}");
     }
 
     /**

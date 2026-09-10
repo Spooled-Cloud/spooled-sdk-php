@@ -67,4 +67,16 @@ final class OrganizationsResourceTest extends TestCase
         $this->assertNull($got['error']);
         $this->assertArrayNotHasKey('suggestions', $got);
     }
+
+    #[Test]
+    public function remove_member_deletes_the_api_key_not_a_missing_members_route(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('delete')
+            ->with('api-keys/key_1')
+            ->willReturn([]);
+
+        (new OrganizationsResource($httpClient))->removeMember('org_1', 'key_1');
+    }
 }

@@ -25,6 +25,7 @@
 - There is no `PUT /admin/organizations/{id}/limits`. PHP `setOrganizationLimits()` PATCHes `{customLimits}` on the org.
 - `GET /organizations/usage` is `{ plan, plan_display_name, limits, usage, warnings }`. `usage` includes `jobs_today` and `workflows`. Each usage item has `current`, `limit`, `percentage`, `is_disabled`.
 - `POST /organizations` returns `{ organization, api_key }`. The key is shown once; `organizations->create()` returns `CreateOrganizationResponse`.
+- There is no `DELETE /organizations/{id}/members/{memberId}`. GET members is backed by active API keys; PHP `removeMember()` is `DELETE /api-keys/{memberId}`.
 - GET/POST `/organizations/webhook-token` returns `{ webhook_token, webhook_url }`. PHP `WebhookToken::$token`/`$url` map those; the API never sends `createdAt`/`expiresAt`.
 - Slug check is `GET /organizations/check-slug?slug=` → `{ available, valid, error, suggestion }`, not `suggestions`.
 - Queue JSON uses `queue_name` (camelCase `queueName`), not `name`. List/get send `enabled` and `default_timeout`; `paused` is on pause/get-info only.

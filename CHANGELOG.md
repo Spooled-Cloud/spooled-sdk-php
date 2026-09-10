@@ -45,6 +45,9 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `organizations->removeMember()` now calls `DELETE /api-keys/{memberId}`.
+  There is no members DELETE route; GET `/organizations/{id}/members` is
+  backed by active API keys, so the previous path always 404'd.
 - `auth->register()` now calls `POST /auth/signup/complete` and returns
   `CompleteSignupResponse` (tokens plus the one-time `api_key` string). It
   previously POSTed `/auth/register`, which is not a backend route, so every
