@@ -29,8 +29,8 @@ final readonly class Job
         public string $id,
         public string $queueName,
         public string $status,
-        /** @var array<string, mixed> */
-        public array $payload,
+        /** Any JSON (backend payload is serde_json::Value). */
+        public mixed $payload,
         public int $priority,
         public int $retryCount,
         public int $maxRetries,
@@ -41,12 +41,12 @@ final readonly class Job
         public ?string $parentJobId,
         public ?string $organizationId,
         public ?string $error,
-        /** @var array<string, mixed>|null */
-        public ?array $result,
-        /** @var array<string>|null */
-        public ?array $tags,
-        /** @var array<string, mixed>|null */
-        public ?array $metadata,
+        /** Any JSON, or null when the API omitted result. */
+        public mixed $result,
+        /** Any JSON, or null when the API omitted tags. */
+        public mixed $tags,
+        /** Any JSON, or null when the API omitted metadata. */
+        public mixed $metadata,
         public ?string $idempotencyKey,
         public ?string $createdAt,
         public ?string $updatedAt,
@@ -74,7 +74,7 @@ final readonly class Job
             id: (string) ($data['id'] ?? ''),
             queueName: (string) ($data['queueName'] ?? $data['queue'] ?? ''),
             status: (string) ($data['status'] ?? 'pending'),
-            payload: is_array($data['payload'] ?? null) ? $data['payload'] : [],
+            payload: array_key_exists('payload', $data) ? $data['payload'] : [],
             priority: (int) ($data['priority'] ?? 0),
             retryCount: (int) ($data['retryCount'] ?? $data['retry_count'] ?? $data['attempt'] ?? 0),
             maxRetries: (int) ($data['maxRetries'] ?? $data['max_retries'] ?? 3),
@@ -89,9 +89,9 @@ final readonly class Job
             error: isset($data['error']) ? (string) $data['error']
                 : (isset($data['lastError']) ? (string) $data['lastError']
                 : (isset($data['last_error']) ? (string) $data['last_error'] : null)),
-            result: is_array($data['result'] ?? null) ? $data['result'] : null,
-            tags: isset($data['tags']) && is_array($data['tags']) ? $data['tags'] : null,
-            metadata: is_array($data['metadata'] ?? null) ? $data['metadata'] : null,
+            result: array_key_exists('result', $data) ? $data['result'] : null,
+            tags: array_key_exists('tags', $data) ? $data['tags'] : null,
+            metadata: array_key_exists('metadata', $data) ? $data['metadata'] : null,
             idempotencyKey: isset($data['idempotencyKey']) ? (string) $data['idempotencyKey'] : null,
             createdAt: isset($data['createdAt']) ? (string) $data['createdAt'] : null,
             updatedAt: isset($data['updatedAt']) ? (string) $data['updatedAt'] : null,
@@ -174,8 +174,8 @@ final readonly class CreateJobParams
 {
     public string $queue;
 
-    /** @var array<string, mixed> */
-    public array $payload;
+    /** Any JSON (backend payload is serde_json::Value). */
+    public mixed $payload;
 
     public int $priority;
 
@@ -183,11 +183,11 @@ final readonly class CreateJobParams
 
     public ?string $scheduledFor;
 
-    /** @var array<string>|null */
-    public ?array $tags;
+    /** Any JSON, or null when omitted. */
+    public mixed $tags;
 
-    /** @var array<string, mixed>|null */
-    public ?array $metadata;
+    /** Any JSON, or null when omitted. */
+    public mixed $metadata;
 
     public ?string $idempotencyKey;
 
@@ -202,19 +202,16 @@ final readonly class CreateJobParams
     private bool $hasTimeoutSeconds;
 
     /**
-     * @param array<string, mixed> $payload
-     * @param array<string>|null $tags
-     * @param array<string, mixed>|null $metadata
      * @param array<string>|null $dependencies
      */
     public function __construct(
         string $queue,
-        array $payload,
+        mixed $payload,
         int $priority = 0,
         ?int $maxRetries = null,
         ?string $scheduledFor = null,
-        ?array $tags = null,
-        ?array $metadata = null,
+        mixed $tags = null,
+        mixed $metadata = null,
         ?string $idempotencyKey = null,
         ?array $dependencies = null,
         ?int $timeoutSeconds = null,
@@ -378,8 +375,8 @@ final readonly class ClaimedJob
     public function __construct(
         public string $id,
         public string $queueName,
-        /** @var array<string, mixed> */
-        public array $payload,
+        /** Any JSON (backend payload is serde_json::Value). */
+        public mixed $payload,
         public int $retryCount,
         public int $maxRetries,
         public int $timeoutSeconds,
@@ -401,7 +398,7 @@ final readonly class ClaimedJob
         return new self(
             id: (string) ($data['id'] ?? ''),
             queueName: (string) ($data['queueName'] ?? $data['queue'] ?? ''),
-            payload: is_array($data['payload'] ?? null) ? $data['payload'] : [],
+            payload: array_key_exists('payload', $data) ? $data['payload'] : [],
             retryCount: (int) ($data['retryCount'] ?? $data['retry_count'] ?? 0),
             maxRetries: (int) ($data['maxRetries'] ?? $data['max_retries'] ?? 3),
             timeoutSeconds: (int) ($data['timeoutSeconds'] ?? $data['timeout_seconds'] ?? 300),

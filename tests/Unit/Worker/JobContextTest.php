@@ -16,7 +16,7 @@ final class JobContextTest extends TestCase
     private function createContext(
         string $jobId = 'job-123',
         string $queueName = 'test-queue',
-        array $payload = [],
+        mixed $payload = [],
         int $retryCount = 0,
         int $maxRetries = 3,
         array $metadata = [],
@@ -127,6 +127,16 @@ final class JobContextTest extends TestCase
         $this->assertTrue($ctx->has('exists'));
         $this->assertTrue($ctx->has('nullValue'));
         $this->assertFalse($ctx->has('missing'));
+    }
+
+    #[Test]
+    public function get_and_has_tolerate_non_object_payload(): void
+    {
+        $ctx = $this->createContext(payload: 'plain-text');
+
+        $this->assertSame('plain-text', $ctx->payload);
+        $this->assertFalse($ctx->has('name'));
+        $this->assertSame('default', $ctx->get('name', 'default'));
     }
 
     #[Test]

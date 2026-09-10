@@ -53,5 +53,6 @@
 - `GET /jobs` summaries include `job_type` from `payload.job_type`. `Job::$jobType` maps that field; GET detail copies it from `payload` when the top-level field is absent.
 - Job detail sends `last_error` and `assigned_worker_id` (camelCase `lastError`/`assignedWorkerId`), not `error`/`workerId`.
 - `POST /jobs` returns `{ id, created }`. PHP `jobs->create()` returns `CreateJobResult`; `createAndGet()` fetches the full `Job`.
+- Job `payload`/`result`/`tags`/`metadata` and schedule `payload_template`/`metadata` are `serde_json::Value` (any JSON). PHP keeps string/bool/number values instead of coercing them to `[]`/`null`.
 - `DELETE /jobs/{id}` returns 204 empty. PHP `jobs->cancel()` then `GET`s the cancelled row; do not parse the 204 as a `Job` (that became `id=""` / `status=pending`).
 - `GET /dashboard` job summary sends `completed_24h`, `failed_24h`, `avg_wait_time_ms`, `avg_processing_time_ms` (camelCase `completed24h`/`failed24h`/`avgWaitTimeMs`/`avgProcessingTimeMs`), not `completed`/`failed`/`avgWaitTimeMs` at the top level.

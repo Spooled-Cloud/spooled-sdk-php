@@ -350,4 +350,33 @@ final class JobTest extends TestCase
 
         $this->assertNull($job->leaseId);
     }
+
+    #[Test]
+    public function from_array_keeps_non_object_json_payload_result_tags_and_metadata(): void
+    {
+        $job = Job::fromArray([
+            'id' => 'job-json',
+            'queueName' => 'test-queue',
+            'status' => 'completed',
+            'payload' => 'hello',
+            'result' => true,
+            'tags' => 'urgent',
+            'metadata' => 3,
+        ]);
+
+        $this->assertSame('hello', $job->payload);
+        $this->assertTrue($job->result);
+        $this->assertSame('urgent', $job->tags);
+        $this->assertSame(3, $job->metadata);
+
+        $claimed = ClaimedJob::fromArray([
+            'id' => 'job-1',
+            'queueName' => 'test-queue',
+            'payload' => false,
+        ]);
+        $this->assertFalse($claimed->payload);
+
+        $params = new CreateJobParams(queue: 'test-queue', payload: 'plain-text');
+        $this->assertSame('plain-text', $params->toArray()['payload']);
+    }
 }

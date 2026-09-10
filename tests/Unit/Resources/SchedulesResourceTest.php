@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Spooled\Http\HttpClient;
 use Spooled\Resources\SchedulesResource;
+use Spooled\Types\Schedule;
 use Spooled\Util\Casing;
 
 #[CoversClass(SchedulesResource::class)]
@@ -184,6 +185,22 @@ final class SchedulesResourceTest extends TestCase
         $this->assertSame('reports', $schedule->queue);
         $this->assertSame(['type' => 'daily'], $schedule->payload);
         $this->assertSame('0 9 * * *', $schedule->schedule);
+    }
+
+    #[Test]
+    public function from_array_keeps_non_object_json_payload_and_metadata(): void
+    {
+        $schedule = Schedule::fromArray([
+            'id' => 'sch-json',
+            'name' => 'Ping',
+            'queueName' => 'default',
+            'cronExpression' => '* * * * * *',
+            'payloadTemplate' => 'ping',
+            'metadata' => false,
+        ]);
+
+        $this->assertSame('ping', $schedule->payload);
+        $this->assertFalse($schedule->metadata);
     }
 
     #[Test]

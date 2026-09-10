@@ -56,3 +56,4 @@
 | PH-51 | P1 | ~~`auth->emailVerify()` mapped signup `{type,signup_token}` onto empty `AuthTokens`~~ **FIXED** | `src/Types/Auth.php`; `src/Resources/AuthResource.php`; POST `/auth/email/verify` is tagged login\|signup |
 | PH-52 | P1 | ~~`auth->register()` POSTed `/auth/register` (404)~~ **FIXED** | `src/Resources/AuthResource.php`; `POST /auth/signup/complete` → tokens + raw `api_key` |
 | PH-53 | P1 | ~~`organizations->removeMember()` DELETEd `/organizations/{id}/members/{id}` (404)~~ **FIXED** | `src/Resources/OrganizationsResource.php`; members are API keys → `DELETE /api-keys/{id}` |
+| PH-54 | P1 | ~~Job/schedule `fromArray` dropped non-object JSON payload/result/tags/metadata~~ **FIXED** | `src/Types/Job.php`; `src/Types/Schedule.php`; backend is `serde_json::Value` |

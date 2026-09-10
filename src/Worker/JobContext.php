@@ -11,11 +11,9 @@ namespace Spooled\Worker;
  */
 final class JobContext
 {
-    /** @var array<string, mixed>|null */
-    private ?array $result = null;
+    private mixed $result = null;
 
     /**
-     * @param array<string, mixed> $payload
      * @param array<string, mixed> $metadata
      */
     public function __construct(
@@ -23,8 +21,8 @@ final class JobContext
         public readonly string $jobId,
         /** Queue the job is from */
         public readonly string $queueName,
-        /** Job payload data */
-        public readonly array $payload,
+        /** Job payload (any JSON) */
+        public readonly mixed $payload,
         /** Current retry count */
         public readonly int $retryCount,
         /** Maximum retries allowed */
@@ -94,7 +92,13 @@ final class JobContext
      */
     public function get(string $key, mixed $default = null): mixed
     {
-        return $this->payload[$key] ?? $default;
+        if (!is_array($this->payload)) {
+            return $default;
+        }
+
+        $payload = $this->payload;
+
+        return $payload[$key] ?? $default;
     }
 
     /**
@@ -102,7 +106,7 @@ final class JobContext
      */
     public function has(string $key): bool
     {
-        return array_key_exists($key, $this->payload);
+        return is_array($this->payload) && array_key_exists($key, $this->payload);
     }
 
     /**
@@ -114,21 +118,17 @@ final class JobContext
     }
 
     /**
-     * Set job result.
-     *
-     * @param array<string, mixed> $result
+     * Set job result (any JSON).
      */
-    public function setResult(array $result): void
+    public function setResult(mixed $result): void
     {
         $this->result = $result;
     }
 
     /**
      * Get job result.
-     *
-     * @return array<string, mixed>|null
      */
-    public function getResult(): ?array
+    public function getResult(): mixed
     {
         return $this->result;
     }

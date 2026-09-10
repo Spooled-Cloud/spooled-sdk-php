@@ -15,15 +15,15 @@ final readonly class Schedule
         public string $queue,
         public string $schedule,
         public bool $paused,
-        /** @var array<string, mixed> */
-        public array $payload,
+        /** Any JSON (backend payload_template is serde_json::Value). */
+        public mixed $payload,
         public ?string $organizationId,
         public ?string $timezone,
         public int $priority,
         public int $maxRetries,
         public ?string $description,
-        /** @var array<string, mixed>|null */
-        public ?array $metadata,
+        /** Any JSON, or null when the API omitted metadata. */
+        public mixed $metadata,
         public ?string $lastRunAt,
         public ?string $nextRunAt,
         public int $runCount,
@@ -51,16 +51,20 @@ final readonly class Schedule
             queue: (string) ($data['queue'] ?? $data['queue_name'] ?? $data['queueName'] ?? ''),
             schedule: (string) ($data['schedule'] ?? $data['cron_expression'] ?? $data['cronExpression'] ?? ''),
             paused: $paused,
-            payload: is_array($data['payload'] ?? $data['payload_template'] ?? $data['payloadTemplate'] ?? null)
-                ? ($data['payload'] ?? $data['payload_template'] ?? $data['payloadTemplate'])
-                : [],
+            payload: array_key_exists('payload', $data)
+                ? $data['payload']
+                : (array_key_exists('payload_template', $data)
+                    ? $data['payload_template']
+                    : (array_key_exists('payloadTemplate', $data)
+                        ? $data['payloadTemplate']
+                        : [])),
             organizationId: isset($data['organization_id']) ? (string) $data['organization_id']
                 : (isset($data['organizationId']) ? (string) $data['organizationId'] : null),
             timezone: isset($data['timezone']) ? (string) $data['timezone'] : null,
             priority: (int) ($data['priority'] ?? 0),
             maxRetries: (int) ($data['max_retries'] ?? $data['maxRetries'] ?? 3),
             description: isset($data['description']) ? (string) $data['description'] : null,
-            metadata: is_array($data['metadata'] ?? null) ? $data['metadata'] : null,
+            metadata: array_key_exists('metadata', $data) ? $data['metadata'] : null,
             lastRunAt: isset($data['last_run_at']) ? (string) $data['last_run_at']
                 : (isset($data['lastRunAt']) ? (string) $data['lastRunAt'] : null),
             nextRunAt: isset($data['next_run_at']) ? (string) $data['next_run_at']
