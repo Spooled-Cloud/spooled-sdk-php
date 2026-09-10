@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Spooled\Resources;
 
 use Spooled\Errors\ValidationError;
+use Spooled\Types\CustomWebhookResponse;
 
 /**
  * Webhook ingestion resource for ingesting webhooks from various sources.
@@ -14,12 +15,13 @@ final class WebhookIngestionResource extends BaseResource
     /**
      * Ingest a custom webhook (Node parity).
      *
-     * POST /api/v1/webhooks/{org_id}/custom
+     * POST /api/v1/webhooks/{org_id}/custom returns `{jobId, queueName, status}`.
+     * An older empty 200 maps to null fields rather than throwing.
      *
      * @param array<string, mixed> $params
      * @param array{webhookToken?: string, forwardedProto?: string} $opts
      */
-    public function custom(string $orgId, array $params, array $opts = []): void
+    public function custom(string $orgId, array $params, array $opts = []): CustomWebhookResponse
     {
         $headers = [];
         if (($opts['webhookToken'] ?? null) !== null) {
@@ -29,7 +31,9 @@ final class WebhookIngestionResource extends BaseResource
             $headers['X-Forwarded-Proto'] = (string) $opts['forwardedProto'];
         }
 
-        $this->httpClient->post("webhooks/{$orgId}/custom", $params, headers: $headers);
+        $response = $this->httpClient->post("webhooks/{$orgId}/custom", $params, headers: $headers);
+
+        return CustomWebhookResponse::fromArray($response);
     }
 
     /**

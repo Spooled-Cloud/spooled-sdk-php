@@ -52,3 +52,4 @@
 | PH-47 | P1 | ~~`apiKeys->regenerate()` POSTed `/api-keys/{id}/regenerate` (404)~~ **FIXED** | `src/Resources/ApiKeysResource.php`; create replacement then DELETE old |
 | PH-48 | P1 | ~~`webhooks->retryDelivery()` mapped `{success,message}` onto `WebhookDelivery`~~ **FIXED** | `src/Resources/WebhooksResource.php`; `src/Types/Webhook.php`; POST retry is success+message, not a delivery |
 | PH-49 | P2 | ~~`HealthStatus::$checks` always null (GET `/health` sends `database`/`cache`)~~ **FIXED** | `src/Types/Common.php` |
+| PH-50 | P1 | ~~`ingest->custom()` returned `void` and dropped `jobId` after backend started sending `WebhookResponse`~~ **FIXED** | `src/Resources/WebhookIngestionResource.php` |

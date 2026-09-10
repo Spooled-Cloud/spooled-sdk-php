@@ -45,6 +45,9 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `ingest->custom()` now returns `CustomWebhookResponse` (`jobId`, `queueName`,
+  `status`). It previously returned `void`, so the created job id was dropped.
+  An empty 200 still maps to null fields.
 - `health->check()` now maps GET `/health` `database`/`cache` onto
   `HealthStatus::$checks`. Those booleans were previously dropped, so
   component health always read as null.

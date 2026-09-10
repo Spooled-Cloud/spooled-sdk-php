@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Spooled\Http\HttpClient;
 use Spooled\Resources\WebhookIngestionResource;
+use Spooled\Types\CustomWebhookResponse;
 
 #[CoversClass(WebhookIngestionResource::class)]
 final class WebhookIngestionResourceTest extends TestCase
@@ -118,6 +119,37 @@ final class WebhookIngestionResourceTest extends TestCase
         $actual = $this->resource->generateGitHubSignature($payload, $secret);
 
         $this->assertSame($expected, $actual);
+    }
+
+    #[Test]
+    public function custom_maps_job_id_queue_name_status(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient
+            ->expects($this->once())
+            ->method('post')
+            ->with(
+                'webhooks/org_1/custom',
+                ['queueName' => 'events', 'payload' => ['ok' => true]],
+                [],
+                ['X-Webhook-Token' => 'whk_test'],
+            )
+            ->willReturn([
+                'jobId' => 'job_1',
+                'queueName' => 'events',
+                'status' => 'pending',
+            ]);
+
+        $got = (new WebhookIngestionResource($httpClient))->custom(
+            'org_1',
+            ['queueName' => 'events', 'payload' => ['ok' => true]],
+            ['webhookToken' => 'whk_test'],
+        );
+
+        $this->assertInstanceOf(CustomWebhookResponse::class, $got);
+        $this->assertSame('job_1', $got->jobId);
+        $this->assertSame('events', $got->queueName);
+        $this->assertSame('pending', $got->status);
     }
 
     #[Test]

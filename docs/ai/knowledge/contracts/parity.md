@@ -1,6 +1,7 @@
 # Parity notes (PHP)
 
 - Unique: webhook enable/disable + GitHub/Stripe **validate** helpers. `enable()`/`disable()` are thin wrappers over `PUT /outgoing-webhooks/{id}` (`{"enabled": …}`); there is no `/enable` or `/disable` route to point them back at. `enable()` is the recovery path after auto-disable and is charged against the plan webhook cap (429 `QUOTA_EXCEEDED`).
+- `POST /webhooks/{org_id}/custom` returns `{ job_id, queue_name, status }` (OpenAPI `WebhookResponse`). PHP `ingest->custom()` maps those onto `jobId`/`queueName`/`status`; empty 200 leaves them null. There is no `/webhooks/{org_id}/github` or `/stripe`.
 - `GET /health` sends `status`, `database`, `cache` (version omitted when unauthenticated). PHP `HealthStatus::$checks` maps those booleans. `/health/live` and `/health/ready` are empty 200/503.
 - `webhooks->update()` `secret` is three-state and null is destructive: omit = keep, `null` = clear (deliveries unsigned), string = replace. Do not "simplify" null back into no-op — that reinstates the un-removable-secret bug.
 - `Webhook::$failureCount` maps `failure_count` (consecutive failed **deliveries**, not attempts; 20 -> auto-disable, `$lastStatus === 'auto_disabled'`). `$secret` is always null (backend `skip_serializing`) and `$deliveryCount`/`$maxRetries`/`$timeout`/`$headers` have no REST counterpart.

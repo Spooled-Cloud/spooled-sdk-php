@@ -280,3 +280,34 @@ final readonly class RetryDeliveryResponse
         );
     }
 }
+
+/**
+ * POST /webhooks/{org_id}/custom — OpenAPI WebhookResponse.
+ *
+ * Empty 200 (older backends) leaves the fields null.
+ */
+final readonly class CustomWebhookResponse
+{
+    public function __construct(
+        public ?string $jobId = null,
+        public ?string $queueName = null,
+        public ?string $status = null,
+    ) {
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public static function fromArray(array $data): self
+    {
+        $jobId = $data['jobId'] ?? $data['job_id'] ?? null;
+        $queueName = $data['queueName'] ?? $data['queue_name'] ?? null;
+        $status = $data['status'] ?? null;
+
+        return new self(
+            jobId: is_string($jobId) && $jobId !== '' ? $jobId : null,
+            queueName: is_string($queueName) && $queueName !== '' ? $queueName : null,
+            status: is_string($status) && $status !== '' ? $status : null,
+        );
+    }
+}
