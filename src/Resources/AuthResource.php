@@ -9,6 +9,7 @@ use Spooled\Types\AuthTokens;
 use Spooled\Types\CurrentUserResponse;
 use Spooled\Types\EmailCheckResponse;
 use Spooled\Types\EmailLoginStartResponse;
+use Spooled\Types\EmailVerifyResponse;
 use Spooled\Types\SuccessResponse;
 use Spooled\Types\TokenValidation;
 
@@ -103,15 +104,20 @@ final class AuthResource extends BaseResource
 
     /**
      * Verify email login code.
+     *
+     * POST /auth/email/verify is tagged: `{type: login, access_token, ...}`
+     * for an existing account, or `{type: signup, signup_token, email}` when
+     * no account exists yet. Mapping that onto AuthTokens dropped signup_token
+     * and left accessToken empty.
      */
-    public function emailVerify(string $email, string $code): AuthTokens
+    public function emailVerify(string $email, string $code): EmailVerifyResponse
     {
         $response = $this->httpClient->post('auth/email/verify', [
             'email' => $email,
             'code' => $code,
         ]);
 
-        return AuthTokens::fromArray($response);
+        return EmailVerifyResponse::fromArray($response);
     }
 
     /**

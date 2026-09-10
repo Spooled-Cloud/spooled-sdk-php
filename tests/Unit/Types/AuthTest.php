@@ -10,11 +10,13 @@ use PHPUnit\Framework\TestCase;
 use Spooled\Types\CurrentUserResponse;
 use Spooled\Types\EmailCheckResponse;
 use Spooled\Types\EmailLoginStartResponse;
+use Spooled\Types\EmailVerifyResponse;
 use Spooled\Types\TokenValidation;
 
 #[CoversClass(CurrentUserResponse::class)]
 #[CoversClass(EmailCheckResponse::class)]
 #[CoversClass(EmailLoginStartResponse::class)]
+#[CoversClass(EmailVerifyResponse::class)]
 #[CoversClass(TokenValidation::class)]
 final class AuthTest extends TestCase
 {
@@ -120,5 +122,44 @@ final class AuthTest extends TestCase
         $this->assertFalse($got->valid);
         $this->assertSame('Invalid token', $got->error);
         $this->assertNull($got->organizationId);
+    }
+
+    #[Test]
+    public function email_verify_maps_login_tokens(): void
+    {
+        $got = EmailVerifyResponse::fromArray([
+            'type' => 'login',
+            'accessToken' => 'at_1',
+            'refreshToken' => 'rt_1',
+            'tokenType' => 'Bearer',
+            'expiresIn' => 86400,
+            'refreshExpiresIn' => 2592000,
+        ]);
+
+        $this->assertSame('login', $got->type);
+        $this->assertSame('at_1', $got->accessToken);
+        $this->assertSame('rt_1', $got->refreshToken);
+        $this->assertSame('Bearer', $got->tokenType);
+        $this->assertSame(86400, $got->expiresIn);
+        $this->assertSame(2592000, $got->refreshExpiresIn);
+        $this->assertNull($got->signupToken);
+    }
+
+    #[Test]
+    public function email_verify_maps_signup_token_not_empty_access(): void
+    {
+        $got = EmailVerifyResponse::fromArray([
+            'type' => 'signup',
+            'signupToken' => 'signup-token-123',
+            'email' => 'new@user.com',
+            'expiresIn' => 900,
+        ]);
+
+        $this->assertSame('signup', $got->type);
+        $this->assertSame('signup-token-123', $got->signupToken);
+        $this->assertSame('new@user.com', $got->email);
+        $this->assertSame(900, $got->expiresIn);
+        $this->assertNull($got->accessToken);
+        $this->assertNull($got->refreshToken);
     }
 }

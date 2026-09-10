@@ -262,3 +262,55 @@ final readonly class EmailCheckResponse
         );
     }
 }
+
+/**
+ * POST /auth/email/verify — tagged `{type: login|signup, ...}`.
+ *
+ * Login sends access/refresh tokens. Signup (no account yet) sends
+ * `signup_token` and never access_token; mapping that onto AuthTokens
+ * left accessToken empty and dropped the token needed for signup/complete.
+ */
+final readonly class EmailVerifyResponse
+{
+    public function __construct(
+        public string $type,
+        public ?string $accessToken = null,
+        public ?string $refreshToken = null,
+        public ?string $tokenType = null,
+        public ?int $expiresIn = null,
+        public ?int $refreshExpiresIn = null,
+        public ?string $signupToken = null,
+        public ?string $email = null,
+    ) {
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public static function fromArray(array $data): self
+    {
+        $type = (string) ($data['type'] ?? '');
+        if ($type === '') {
+            $type = isset($data['signupToken']) || isset($data['signup_token']) ? 'signup' : 'login';
+        }
+
+        $access = $data['accessToken'] ?? $data['access_token'] ?? null;
+        $refresh = $data['refreshToken'] ?? $data['refresh_token'] ?? null;
+        $tokenType = $data['tokenType'] ?? $data['token_type'] ?? null;
+        $expires = $data['expiresIn'] ?? $data['expires_in'] ?? null;
+        $refreshExpires = $data['refreshExpiresIn'] ?? $data['refresh_expires_in'] ?? null;
+        $signupToken = $data['signupToken'] ?? $data['signup_token'] ?? null;
+        $email = $data['email'] ?? null;
+
+        return new self(
+            type: $type,
+            accessToken: is_string($access) && $access !== '' ? $access : null,
+            refreshToken: is_string($refresh) && $refresh !== '' ? $refresh : null,
+            tokenType: is_string($tokenType) && $tokenType !== '' ? $tokenType : null,
+            expiresIn: $expires !== null ? (int) $expires : null,
+            refreshExpiresIn: $refreshExpires !== null ? (int) $refreshExpires : null,
+            signupToken: is_string($signupToken) && $signupToken !== '' ? $signupToken : null,
+            email: is_string($email) && $email !== '' ? $email : null,
+        );
+    }
+}

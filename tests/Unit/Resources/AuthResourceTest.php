@@ -44,4 +44,25 @@ final class AuthResourceTest extends TestCase
 
         $this->assertTrue($got->success);
     }
+
+    #[Test]
+    public function email_verify_maps_signup_token_instead_of_empty_auth_tokens(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->expects($this->once())
+            ->method('post')
+            ->with('auth/email/verify', ['email' => 'new@user.com', 'code' => '123456'])
+            ->willReturn([
+                'type' => 'signup',
+                'signupToken' => 'signup-token-123',
+                'email' => 'new@user.com',
+                'expiresIn' => 900,
+            ]);
+
+        $got = (new AuthResource($httpClient))->emailVerify('new@user.com', '123456');
+
+        $this->assertSame('signup', $got->type);
+        $this->assertSame('signup-token-123', $got->signupToken);
+        $this->assertNull($got->accessToken);
+    }
 }

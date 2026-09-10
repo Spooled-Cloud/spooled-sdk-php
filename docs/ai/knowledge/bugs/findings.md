@@ -53,3 +53,4 @@
 | PH-48 | P1 | ~~`webhooks->retryDelivery()` mapped `{success,message}` onto `WebhookDelivery`~~ **FIXED** | `src/Resources/WebhooksResource.php`; `src/Types/Webhook.php`; POST retry is success+message, not a delivery |
 | PH-49 | P2 | ~~`HealthStatus::$checks` always null (GET `/health` sends `database`/`cache`)~~ **FIXED** | `src/Types/Common.php` |
 | PH-50 | P1 | ~~`ingest->custom()` returned `void` and dropped `jobId` after backend started sending `WebhookResponse`~~ **FIXED** | `src/Resources/WebhookIngestionResource.php` |
+| PH-51 | P1 | ~~`auth->emailVerify()` mapped signup `{type,signup_token}` onto empty `AuthTokens`~~ **FIXED** | `src/Types/Auth.php`; `src/Resources/AuthResource.php`; POST `/auth/email/verify` is tagged login\|signup |

@@ -45,6 +45,9 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `auth->emailVerify()` now returns `EmailVerifyResponse` for the tagged
+  `{type: login|signup}` body. It previously mapped onto `AuthTokens`, so a
+  new email left `accessToken` empty and dropped `signup_token`.
 - `ingest->custom()` now returns `CustomWebhookResponse` (`jobId`, `queueName`,
   `status`). It previously returned `void`, so the created job id was dropped.
   An empty 200 still maps to null fields.
