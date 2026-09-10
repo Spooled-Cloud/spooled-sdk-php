@@ -254,3 +254,29 @@ final readonly class TestWebhookResponse
         );
     }
 }
+
+/**
+ * Response from POST /outgoing-webhooks/{id}/retry/{delivery_id}.
+ *
+ * This is a retry result, not a delivery record: the API sends success and
+ * message, and does not return the delivery row.
+ */
+final readonly class RetryDeliveryResponse
+{
+    public function __construct(
+        public bool $success,
+        public string $message,
+    ) {
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    public static function fromArray(array $data): self
+    {
+        return new self(
+            success: (bool) ($data['success'] ?? false),
+            message: (string) ($data['message'] ?? ''),
+        );
+    }
+}

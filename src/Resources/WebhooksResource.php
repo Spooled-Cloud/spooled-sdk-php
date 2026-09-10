@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace Spooled\Resources;
 
+use Spooled\Types\RetryDeliveryResponse;
 use Spooled\Types\SuccessResponse;
 use Spooled\Types\TestWebhookResponse;
 use Spooled\Types\Webhook;
-use Spooled\Types\WebhookDelivery;
 use Spooled\Types\WebhookDeliveryList;
 use Spooled\Types\WebhookList;
 
@@ -117,15 +117,17 @@ final class WebhooksResource extends BaseResource
     /**
      * Retry a failed delivery.
      *
-     * A successful manual retry resets the webhook's `failureCount` to 0. The
-     * delivery must still be within the plan's history retention window; once
-     * the row is swept there is nothing left to retry.
+     * POST /outgoing-webhooks/{id}/retry/{delivery_id} returns success and
+     * message, not a delivery row. A successful retry resets the webhook's
+     * `failureCount` to 0. The delivery must still be within the plan's
+     * history retention window; once the row is swept there is nothing left
+     * to retry.
      */
-    public function retryDelivery(string $webhookId, string $deliveryId): WebhookDelivery
+    public function retryDelivery(string $webhookId, string $deliveryId): RetryDeliveryResponse
     {
         $response = $this->httpClient->post("outgoing-webhooks/{$webhookId}/retry/{$deliveryId}");
 
-        return WebhookDelivery::fromArray($response);
+        return RetryDeliveryResponse::fromArray($response);
     }
 
     /**

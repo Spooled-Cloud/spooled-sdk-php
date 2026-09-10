@@ -42,6 +42,7 @@
 - Outgoing webhook delivery JSON uses `event`, `attempts`, and `response_body` (camelCase `responseBody`), not `eventType`/`attemptNumber`/`response`.
 - Schedule history is a raw array of runs (`error_message`, `started_at`), not `{history: [...]}` with `error`/`executedAt`.
 - Webhook test is `POST /outgoing-webhooks/{id}/test` → `{ success, status_code, response_time_ms, error }`, not a delivery. `webhooks->test()` returns `TestWebhookResponse`.
+- Webhook retry is `POST /outgoing-webhooks/{id}/retry/{delivery_id}` → `{ success, message }`, not a delivery. `webhooks->retryDelivery()` returns `RetryDeliveryResponse`.
 - Job list/DLQ summaries send `attempt` and `max_retries`, not `retry_count`. `Job::$retryCount` maps from `attempt`. Detail `GET /jobs/{id}` still uses `retry_count`.
 - REST job status is `pending`/`scheduled`/`processing`/`completed`/`failed`/`deadletter`/`cancelled`. `JobStatus` includes those; `claimed` is not a REST status.
 - `GET /jobs` summaries include `job_type` from `payload.job_type`. `Job::$jobType` maps that field; GET detail copies it from `payload` when the top-level field is absent.

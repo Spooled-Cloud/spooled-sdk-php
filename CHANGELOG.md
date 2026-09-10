@@ -45,6 +45,9 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `webhooks->retryDelivery()` now returns `RetryDeliveryResponse` (`success`,
+  `message`). It previously parsed `POST /outgoing-webhooks/{id}/retry/{delivery_id}`
+  as a `WebhookDelivery`, so `id` was empty and `status` was always `pending`.
 - `auth->logout()` now sends the refresh token in the body. Without it the
   access token is blacklisted but `/auth/refresh` still mints a new pair, so
   logout did not end the session. The stored refresh token is used when the
@@ -139,6 +142,7 @@ Tracks Spooled backend 0.1.111.
 
 **Breaking:** `Webhook::$failedCount` is renamed to `Webhook::$failureCount`. The old property was mapped from a response key the API never sends, so it always read 0; the new one carries the real consecutive-failure count.
 **Breaking:** `webhooks->test()` now returns `TestWebhookResponse` instead of `WebhookDelivery`. The test endpoint never sent a delivery.
+**Breaking:** `webhooks->retryDelivery()` now returns `RetryDeliveryResponse` instead of `WebhookDelivery`. The retry endpoint never sent a delivery.
 **Breaking:** `jobs->create()` now returns `CreateJobResult` (`id`, `created`) instead of `Job`. `POST /jobs` only sends those two fields, so queue/status/payload on the old `Job` were always empty and the idempotency `created` flag was dropped. Use `createAndGet()` for a full `Job`.
 - `OrganizationUsage` now maps `jobsToday`, `workflows`, `planDisplayName`,
   `warnings`, and per-item `percentage`/`isDisabled` from

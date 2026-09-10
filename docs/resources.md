@@ -429,6 +429,8 @@ Delivery history is retained, not permanent. Rows are removed once they pass the
 
 ```php
 $result = $client->webhooks->retryDelivery('webhook_id', 'delivery_id');
+echo "Success: " . ($result->success ? 'yes' : 'no') . "\n";
+echo $result->message . "\n";
 ```
 
 The delivery must still be inside the retention window; once its row is swept there is nothing left to retry.
