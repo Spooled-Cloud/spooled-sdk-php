@@ -178,6 +178,7 @@ final class SchedulesResourceTest extends TestCase
             'queue' => 'reports',
             'schedule' => '0 9 * * *',
             'payload' => ['type' => 'daily'],
+            'timeoutSeconds' => 15,
         ]);
 
         // queue_name and payload_template are also absent from the create
@@ -185,6 +186,7 @@ final class SchedulesResourceTest extends TestCase
         $this->assertSame('reports', $schedule->queue);
         $this->assertSame(['type' => 'daily'], $schedule->payload);
         $this->assertSame('0 9 * * *', $schedule->schedule);
+        $this->assertSame(15, $schedule->timeoutSeconds);
     }
 
     #[Test]
@@ -201,6 +203,20 @@ final class SchedulesResourceTest extends TestCase
 
         $this->assertSame('ping', $schedule->payload);
         $this->assertFalse($schedule->metadata);
+    }
+
+    #[Test]
+    public function from_array_reads_timeout_seconds(): void
+    {
+        $schedule = Schedule::fromArray([
+            'id' => 'sch-1',
+            'name' => 'Ping',
+            'queueName' => 'default',
+            'cronExpression' => '* * * * * *',
+            'timeoutSeconds' => 15,
+        ]);
+
+        $this->assertSame(15, $schedule->timeoutSeconds);
     }
 
     #[Test]

@@ -60,6 +60,8 @@ final readonly class Job
         public ?string $leaseId = null,
         /** From list `job_type` or GET `payload.job_type`. */
         public ?string $jobType = null,
+        /** Job timeout in seconds (API `timeout_seconds`; required on GET). */
+        public int $timeoutSeconds = 300,
     ) {
     }
 
@@ -105,6 +107,7 @@ final readonly class Job
             leaseId: isset($data['leaseId']) ? (string) $data['leaseId']
                 : (isset($data['lease_id']) ? (string) $data['lease_id'] : null),
             jobType: self::jobTypeFrom($data),
+            timeoutSeconds: (int) ($data['timeoutSeconds'] ?? $data['timeout_seconds'] ?? 300),
         );
     }
 
@@ -163,6 +166,7 @@ final readonly class Job
             'leaseExpiresAt' => $this->leaseExpiresAt,
             'leaseId' => $this->leaseId,
             'jobType' => $this->jobType,
+            'timeoutSeconds' => $this->timeoutSeconds,
         ], fn ($v) => $v !== null);
     }
 }

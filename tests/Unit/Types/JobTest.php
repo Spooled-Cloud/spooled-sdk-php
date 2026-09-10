@@ -352,6 +352,36 @@ final class JobTest extends TestCase
     }
 
     #[Test]
+    public function from_array_reads_timeout_seconds(): void
+    {
+        $camel = Job::fromArray([
+            'id' => 'job-123',
+            'queueName' => 'test-queue',
+            'status' => 'pending',
+            'payload' => [],
+            'timeoutSeconds' => 45,
+        ]);
+        $snake = Job::fromArray([
+            'id' => 'job-123',
+            'queueName' => 'test-queue',
+            'status' => 'pending',
+            'payload' => [],
+            'timeout_seconds' => 90,
+        ]);
+        $absent = Job::fromArray([
+            'id' => 'job-123',
+            'queueName' => 'test-queue',
+            'status' => 'pending',
+            'payload' => [],
+        ]);
+
+        $this->assertSame(45, $camel->timeoutSeconds);
+        $this->assertSame(90, $snake->timeoutSeconds);
+        $this->assertSame(300, $absent->timeoutSeconds);
+        $this->assertSame(45, $camel->toArray()['timeoutSeconds']);
+    }
+
+    #[Test]
     public function from_array_keeps_non_object_json_payload_result_tags_and_metadata(): void
     {
         $job = Job::fromArray([

@@ -30,6 +30,8 @@ final readonly class Schedule
         public int $failedCount,
         public ?string $createdAt,
         public ?string $updatedAt,
+        /** Job timeout in seconds (API `timeout_seconds`). */
+        public int $timeoutSeconds = 300,
     ) {
     }
 
@@ -75,6 +77,7 @@ final readonly class Schedule
                 : (isset($data['createdAt']) ? (string) $data['createdAt'] : null),
             updatedAt: isset($data['updated_at']) ? (string) $data['updated_at']
                 : (isset($data['updatedAt']) ? (string) $data['updatedAt'] : null),
+            timeoutSeconds: (int) ($data['timeout_seconds'] ?? $data['timeoutSeconds'] ?? 300),
         );
     }
 }
