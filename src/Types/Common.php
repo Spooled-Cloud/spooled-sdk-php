@@ -29,11 +29,20 @@ final readonly class HealthStatus
         // This handles /health/live and /health/ready which return 200 with empty body
         $status = (string) ($data['status'] ?? (empty($data) ? 'healthy' : 'unknown'));
 
+        $checks = is_array($data['checks'] ?? null) ? $data['checks'] : null;
+        // GET /health sends database/cache booleans, not a checks object.
+        if ($checks === null && (array_key_exists('database', $data) || array_key_exists('cache', $data))) {
+            $checks = [
+                'database' => (bool) ($data['database'] ?? false),
+                'cache' => (bool) ($data['cache'] ?? false),
+            ];
+        }
+
         return new self(
             status: $status,
             version: isset($data['version']) ? (string) $data['version'] : null,
-            uptime: isset($data['uptime']) ? (float) $data['uptime'] : null,
-            checks: is_array($data['checks'] ?? null) ? $data['checks'] : null,
+            uptime: isset($data['uptime']) ? (float) $data['uptime'] : (isset($data['uptimeSeconds']) ? (float) $data['uptimeSeconds'] : null),
+            checks: $checks,
         );
     }
 

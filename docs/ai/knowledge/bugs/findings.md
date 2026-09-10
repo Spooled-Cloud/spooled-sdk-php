@@ -51,3 +51,4 @@
 | PH-46 | P1 | ~~`dashboard->getOverview()` / charts / activity hit missing `/dashboard/*` subpaths~~ **FIXED** | `src/Resources/DashboardResource.php`; `GET /dashboard` |
 | PH-47 | P1 | ~~`apiKeys->regenerate()` POSTed `/api-keys/{id}/regenerate` (404)~~ **FIXED** | `src/Resources/ApiKeysResource.php`; create replacement then DELETE old |
 | PH-48 | P1 | ~~`webhooks->retryDelivery()` mapped `{success,message}` onto `WebhookDelivery`~~ **FIXED** | `src/Resources/WebhooksResource.php`; `src/Types/Webhook.php`; POST retry is success+message, not a delivery |
+| PH-49 | P2 | ~~`HealthStatus::$checks` always null (GET `/health` sends `database`/`cache`)~~ **FIXED** | `src/Types/Common.php` |

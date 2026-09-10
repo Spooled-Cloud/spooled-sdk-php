@@ -45,6 +45,9 @@ Tracks Spooled backend 0.1.111.
 
 ### Fixed
 
+- `health->check()` now maps GET `/health` `database`/`cache` onto
+  `HealthStatus::$checks`. Those booleans were previously dropped, so
+  component health always read as null.
 - `webhooks->retryDelivery()` now returns `RetryDeliveryResponse` (`success`,
   `message`). It previously parsed `POST /outgoing-webhooks/{id}/retry/{delivery_id}`
   as a `WebhookDelivery`, so `id` was empty and `status` was always `pending`.
