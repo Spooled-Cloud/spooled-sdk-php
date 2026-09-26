@@ -268,6 +268,20 @@ final class SseClient
         try {
             $parsed = json_decode($event['data'], true, 512, JSON_THROW_ON_ERROR);
             $event['data'] = $parsed;
+            // The API wraps every event as {"type": "<Variant>", "data": {...}}.
+            // Unwrap it so `data` holds the event fields (job_id, queue_name, ...):
+            // job/queue subscriptions match on those fields and never fired
+            // against the envelope. The raw envelope stays under `envelope`.
+            if (
+                is_array($parsed)
+                && isset($parsed['type'])
+                && is_string($parsed['type'])
+                && array_key_exists('data', $parsed)
+                && is_array($parsed['data'])
+            ) {
+                $event['envelope'] = $parsed;
+                $event['data'] = $parsed['data'];
+            }
         } catch (JsonException) {
             // Keep as string
         }

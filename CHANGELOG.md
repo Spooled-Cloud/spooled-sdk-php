@@ -5,6 +5,21 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-09-26
+
+### Fixed
+
+- **SSE job and queue subscriptions never fired.** The API wraps every event
+  as `{"type": "<Variant>", "data": {...}}`, and `SseClient` matched `job_id` /
+  `queue_name` on that envelope, where they are not. Events are now unwrapped:
+  `$event['data']` holds the event fields (`job_id`, `queue_name`, ...),
+  `$event['type']` stays the SSE event name (`job.completed`), and the raw
+  envelope is kept under `$event['envelope']`. With API 0.1.114+, where
+  `/api/v1/events` forwards job events, `subscribeToJob()` and
+  `subscribeToQueue()` callbacks fire.
+- The SSE client tests now exercise the real parser and dispatcher and run in
+  the default suite (they were regex checks in the excluded `realtime` group).
+
 ## [1.2.0] - 2026-09-10
 
 Tracks Spooled backend `0.1.112`. A contract-parity pass: every fix below is a

@@ -5,9 +5,12 @@ declare(strict_types=1);
 namespace Spooled\Tests\Unit\Realtime;
 
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
+use Spooled\Realtime\SseClient;
 
 /**
- * @group realtime
+ * Not in the optional `realtime` group: SseClient only needs Guzzle, a hard
+ * dependency, so these run with the default suite.
  */
 final class SseClientTest extends TestCase
 {
@@ -66,5 +69,73 @@ final class SseClientTest extends TestCase
 
         preg_match('/^id:\s*(.+)$/m', $eventData, $idMatch);
         $this->assertSame('evt_123456', $idMatch[1] ?? null);
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function parse(SseClient $client, string $frame): ?array
+    {
+        $method = new ReflectionMethod($client, 'parseEvent');
+
+        /** @var array<string, mixed>|null */
+        return $method->invoke($client, $frame);
+    }
+
+    public function testParseEventUnwrapsTheApiEnvelope(): void
+    {
+        $client = new SseClient('https://api.spooled.cloud', 'sp_test_key');
+        $frame = "event: job.completed\n"
+            . 'data: {"type":"JobCompleted","data":{"job_id":"job_1","queue_name":"orders","duration_ms":12}}'
+            . "\n";
+
+        $event = $this->parse($client, $frame);
+
+        $this->assertNotNull($event);
+        $this->assertSame('job.completed', $event['type']);
+        $this->assertSame('job_1', $event['data']['job_id']);
+        $this->assertSame('orders', $event['data']['queue_name']);
+        $this->assertSame('JobCompleted', $event['envelope']['type']);
+    }
+
+    public function testQueueAndJobSubscriptionsFireForApiEvents(): void
+    {
+        $client = new SseClient('https://api.spooled.cloud', 'sp_test_key');
+        $queueHits = [];
+        $jobHits = [];
+        $otherHits = [];
+        $client->subscribeToQueue('orders', function (array $event) use (&$queueHits): void {
+            $queueHits[] = $event;
+        });
+        $client->subscribeToJob('job_1', function (array $event) use (&$jobHits): void {
+            $jobHits[] = $event;
+        });
+        $client->subscribeToQueue('emails', function (array $event) use (&$otherHits): void {
+            $otherHits[] = $event;
+        });
+
+        $event = $this->parse(
+            $client,
+            "event: job.created\n"
+            . 'data: {"type":"JobCreated","data":{"job_id":"job_1","queue_name":"orders","priority":0}}'
+            . "\n",
+        );
+        $dispatch = new ReflectionMethod($client, 'dispatchToSubscriptions');
+        $dispatch->invoke($client, $event);
+
+        $this->assertCount(1, $queueHits);
+        $this->assertCount(1, $jobHits);
+        $this->assertCount(0, $otherHits);
+        $this->assertSame('job_1', $queueHits[0]['data']['job_id']);
+    }
+
+    public function testNonEnvelopeDataIsLeftAlone(): void
+    {
+        $client = new SseClient('https://api.spooled.cloud', 'sp_test_key');
+        $event = $this->parse($client, "event: custom\ndata: {\"jobId\":\"123\"}\n");
+
+        $this->assertNotNull($event);
+        $this->assertSame('123', $event['data']['jobId']);
+        $this->assertArrayNotHasKey('envelope', $event);
     }
 }
