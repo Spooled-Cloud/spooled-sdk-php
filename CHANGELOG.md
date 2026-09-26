@@ -5,6 +5,12 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.2] - 2026-09-26
+
+No SDK code changes from 1.2.1. The v1.2.1 tag's release job failed on a test
+that still pinned the previous version string (Packagist published 1.2.1
+regardless); 1.2.2 is cut from a commit whose own release checks pass.
+
 ## [1.2.1] - 2026-09-26
 
 ### Fixed
