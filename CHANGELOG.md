@@ -5,6 +5,24 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.3] - 2026-09-26
+
+### Fixed
+
+- **SSE events never reached subscribers.** Found by running the client against
+  the production API: `SseClient` read the streaming body in 1 KB blocks, and on
+  Guzzle's streaming body that read waits until a full kilobyte has arrived. After
+  the first small frame nothing surfaced until enough later events queued up, so
+  in practice callbacks never fired. The client now reads line by line and
+  dispatches each event as soon as its blank line arrives, and `stop()` takes
+  effect before the next event is dispatched. Verified live: `job.created` and
+  `job.completed` reach `subscribeToQueue()` callbacks.
+
+### Added
+
+- `SseClient` takes an optional fifth constructor argument, a preconfigured
+  `GuzzleHttp\Client`, for custom transports (proxies, TLS options) and tests.
+
 ## [1.2.2] - 2026-09-26
 
 No SDK code changes from 1.2.1. The v1.2.1 tag's release job failed on a test

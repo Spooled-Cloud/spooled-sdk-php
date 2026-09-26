@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Spooled\Realtime;
 
 use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\Psr7\Utils;
 use GuzzleHttp\RequestOptions;
 use JsonException;
 use Psr\Log\LoggerInterface;
@@ -45,13 +46,15 @@ final class SseClient
         ?string $apiKey = null,
         ?string $accessToken = null,
         ?LoggerInterface $logger = null,
+        ?GuzzleClient $httpClient = null,
     ) {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->apiKey = $apiKey;
         $this->accessToken = $accessToken;
         $this->logger = $logger ?? new NullLogger();
 
-        $this->guzzle = new GuzzleClient([
+        // Injectable for tests and custom transports (proxies, TLS options).
+        $this->guzzle = $httpClient ?? new GuzzleClient([
             'base_uri' => $this->baseUrl,
             RequestOptions::STREAM => true,
             RequestOptions::READ_TIMEOUT => 0, // No read timeout for streaming
@@ -164,22 +167,32 @@ final class SseClient
 
         $buffer = '';
 
+        // Read line by line. A fixed-size read ($body->read(1024)) on Guzzle's
+        // streaming body waits until that many bytes arrive, so after the first
+        // small frame nothing surfaced until ~1 KB of later events had queued
+        // up: in practice, SSE events never reached subscribers. readLine()
+        // returns as soon as a line is complete.
         while ($this->running && !$body->eof()) {
-            $chunk = $body->read(1024);
+            $line = Utils::readLine($body);
 
-            if ($chunk === '') {
+            if ($line === '') {
                 continue;
             }
 
-            $buffer .= $chunk;
-
-            // Process complete events
-            while (($pos = strpos($buffer, "\n\n")) !== false) {
-                $eventData = substr($buffer, 0, $pos);
-                $buffer = substr($buffer, $pos + 2);
-
-                $this->processEvent($eventData);
+            // A blank line ends an event.
+            if (rtrim($line, "\r\n") === '') {
+                if ($buffer !== '') {
+                    $this->processEvent($buffer);
+                    $buffer = '';
+                }
+                continue;
             }
+
+            $buffer .= rtrim($line, "\r\n") . "\n";
+        }
+
+        if ($buffer !== '' && $this->running) {
+            $this->processEvent($buffer);
         }
     }
 

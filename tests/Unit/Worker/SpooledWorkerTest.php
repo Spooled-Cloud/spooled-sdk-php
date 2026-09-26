@@ -458,7 +458,7 @@ final class SpooledWorkerTest extends TestCase
     #[Test]
     public function package_version_is_the_default_http_and_worker_version(): void
     {
-        $this->assertSame('1.2.2', Version::VERSION);
+        $this->assertSame('1.2.3', Version::VERSION);
         $this->assertSame(Version::USER_AGENT, ClientOptions::DEFAULT_USER_AGENT);
     }
 }

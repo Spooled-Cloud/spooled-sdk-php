@@ -4,8 +4,13 @@ declare(strict_types=1);
 
 namespace Spooled\Tests\Unit\Realtime;
 
+use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Psr7\Response;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
+use ReflectionProperty;
 use Spooled\Realtime\SseClient;
 
 /**
@@ -137,5 +142,39 @@ final class SseClientTest extends TestCase
         $this->assertNotNull($event);
         $this->assertSame('123', $event['data']['jobId']);
         $this->assertArrayNotHasKey('envelope', $event);
+    }
+
+    public function testConnectDeliversEventsLineByLineAndStops(): void
+    {
+        $body = ": connected\n\n"
+            . "event: system.health\n"
+            . 'data: {"type":"SystemHealth","data":{"database":true,"redis":true}}' . "\n\n"
+            . "event: job.created\n"
+            . 'data: {"type":"JobCreated","data":{"job_id":"job_7","queue_name":"orders"}}' . "\n\n"
+            . "event: job.completed\n"
+            . 'data: {"type":"JobCompleted","data":{"job_id":"job_7","queue_name":"orders"}}' . "\n\n"
+            . "event: job.created\n"
+            . 'data: {"type":"JobCreated","data":{"job_id":"job_8","queue_name":"orders"}}' . "\n\n";
+        $mock = new MockHandler([new Response(200, ['Content-Type' => 'text/event-stream'], $body)]);
+        $client = new SseClient(
+            'https://api.spooled.cloud',
+            'sp_test_key',
+            null,
+            null,
+            new GuzzleClient(['handler' => HandlerStack::create($mock), 'base_uri' => 'https://api.spooled.cloud']),
+        );
+
+        $seen = [];
+        $client->subscribeToQueue('orders', function (array $event) use (&$seen, $client): void {
+            $seen[] = $event['type'] . ':' . $event['data']['job_id'];
+            if (count($seen) === 2) {
+                $client->stop();
+            }
+        });
+        (new ReflectionProperty($client, 'running'))->setValue($client, true);
+        (new ReflectionMethod($client, 'connect'))->invoke($client);
+
+        // Stops after the second matching event; the third is never dispatched.
+        $this->assertSame(['job.created:job_7', 'job.completed:job_7'], $seen);
     }
 }
