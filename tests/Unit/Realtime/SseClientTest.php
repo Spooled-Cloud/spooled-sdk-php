@@ -8,6 +8,7 @@ use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Handler\MockHandler;
 use GuzzleHttp\HandlerStack;
 use GuzzleHttp\Psr7\Response;
+use GuzzleHttp\RequestOptions;
 use PHPUnit\Framework\TestCase;
 use ReflectionMethod;
 use ReflectionProperty;
@@ -176,5 +177,75 @@ final class SseClientTest extends TestCase
 
         // Stops after the second matching event; the third is never dispatched.
         $this->assertSame(['job.created:job_7', 'job.completed:job_7'], $seen);
+    }
+
+    // --- SDKGP-22 ---
+
+    public function testTheDefaultTransportDoesNotUseAZeroReadTimeout(): void
+    {
+        // A zero read timeout makes the stream return immediately when idle, so
+        // the read loop spun at 100% CPU between events.
+        $client = new SseClient('https://api.spooled.cloud', 'sp_test_key');
+        $guzzle = (new ReflectionProperty($client, 'guzzle'))->getValue($client);
+        $config = (new ReflectionProperty(GuzzleClient::class, 'config'))->getValue($guzzle);
+
+        $this->assertGreaterThan(0, $config[RequestOptions::READ_TIMEOUT]);
+        $this->assertSame(SseClient::READ_TIMEOUT_SECONDS, $config[RequestOptions::READ_TIMEOUT]);
+        $this->assertGreaterThan(SseClient::READ_TIMEOUT_SECONDS, SseClient::IDLE_TIMEOUT_SECONDS);
+    }
+
+    public function testACleanServerCloseReconnectsWithGrowingBackoff(): void
+    {
+        // The server closes the stream cleanly (it does so every 30 minutes). The
+        // client used to loop straight back into connect() with no delay, and a
+        // server that closes right after accepting was retried hot.
+        $closed = fn (): Response => new Response(200, ['Content-Type' => 'text/event-stream'], ": connected\n\n");
+        $mock = new MockHandler([$closed(), $closed(), $closed(), $closed()]);
+        $client = new SseClient(
+            'https://api.spooled.cloud',
+            'sp_test_key',
+            null,
+            null,
+            new GuzzleClient(['handler' => HandlerStack::create($mock), 'base_uri' => 'https://api.spooled.cloud']),
+        );
+        (new ReflectionProperty($client, 'reconnectDelay'))->setValue($client, 10);
+
+        $delays = [];
+        $client->on('reconnecting', function (array $event) use (&$delays, $client): void {
+            $delays[] = $event['delay'];
+            if (count($delays) === 3) {
+                $client->stop();
+            }
+        });
+
+        $startedAt = microtime(true);
+        $client->listen();
+
+        // Three clean closes -> three backoffs that grow (the attempt counter is
+        // not reset by merely connecting), and the fourth response is never used.
+        $this->assertSame([10, 20, 40], $delays);
+        $this->assertSame(1, $mock->count());
+        $this->assertGreaterThanOrEqual(0.03, microtime(true) - $startedAt);
+    }
+
+    public function testStopEndsTheBackoffSleepWithoutWaitingItOut(): void
+    {
+        $mock = new MockHandler([new Response(200, [], ''), new Response(200, [], '')]);
+        $client = new SseClient(
+            'https://api.spooled.cloud',
+            'sp_test_key',
+            null,
+            null,
+            new GuzzleClient(['handler' => HandlerStack::create($mock), 'base_uri' => 'https://api.spooled.cloud']),
+        );
+        (new ReflectionProperty($client, 'reconnectDelay'))->setValue($client, 20_000);
+        $client->on('reconnecting', function () use ($client): void {
+            $client->stop();
+        });
+
+        $startedAt = microtime(true);
+        $client->listen();
+
+        $this->assertLessThan(2.0, microtime(true) - $startedAt);
     }
 }

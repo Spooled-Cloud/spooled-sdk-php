@@ -28,7 +28,11 @@ final readonly class WorkerConfig
     public function __construct(
         /** Queue name to process jobs from */
         public string $queueName,
-        /** Maximum concurrent jobs */
+        /**
+         * Capacity advertised at registration (`maxConcurrency`). The PHP runtime
+         * runs one handler at a time and claims one job per poll, whatever this
+         * says; run several worker processes for parallelism.
+         */
         public int $concurrency = self::DEFAULT_CONCURRENCY,
         /** Poll interval in milliseconds */
         public int $pollInterval = self::DEFAULT_POLL_INTERVAL,
@@ -36,9 +40,15 @@ final readonly class WorkerConfig
         public int $leaseDuration = self::DEFAULT_LEASE_DURATION,
         /** Heartbeat fraction of lease duration */
         public float $heartbeatFraction = self::DEFAULT_HEARTBEAT_FRACTION,
-        /** Shutdown timeout in milliseconds */
+        /**
+         * Milliseconds the running handler may keep going after stop() before it
+         * is aborted and its job failed with "Worker shutdown timeout".
+         */
         public int $shutdownTimeout = self::DEFAULT_SHUTDOWN_TIMEOUT,
-        /** Worker heartbeat interval in milliseconds */
+        /**
+         * Worker heartbeat interval in milliseconds. It keeps being sent from the
+         * lease renewal child while a handler runs.
+         */
         public int $heartbeatInterval = self::DEFAULT_HEARTBEAT_INTERVAL,
         /** Worker hostname */
         public ?string $hostname = null,

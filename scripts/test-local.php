@@ -38,6 +38,7 @@ use Spooled\Config\ClientOptions;
 use Spooled\Errors\AuthenticationError;
 use Spooled\Errors\NotFoundError;
 use Spooled\Errors\SpooledError;
+use Spooled\Errors\UnsupportedOperationError;
 use Spooled\SpooledClient;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2543,16 +2544,15 @@ function testOrganizationWebhookToken(SpooledClient $client, TestHarness $harnes
         }
     });
 
-    $harness->runTest('POST /api/v1/organizations/webhook-token/clear - Clear token', function () use ($client, $harness): void {
+    // The clear route exists but its handler always answers 422, so the SDK
+    // method fails locally with a typed error instead of calling it.
+    $harness->runTest('organizations->clearWebhookToken - Not supported by the API', function () use ($client, $harness): void {
         try {
             $client->organizations->clearWebhookToken();
-            $harness->log('Webhook token cleared successfully');
-        } catch (SpooledError $e) {
-            if ($e->statusCode === 404) {
-                $harness->log('Webhook token clear not available');
-            } else {
-                throw $e;
-            }
+
+            throw new \RuntimeException('clearWebhookToken() should be unsupported');
+        } catch (UnsupportedOperationError $e) {
+            $harness->log('clearWebhookToken is unsupported: ' . $e->getMessage());
         }
     });
 }

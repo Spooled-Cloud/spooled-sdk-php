@@ -35,7 +35,11 @@ final class JobContext
     }
 
     /**
-     * Check if worker is shutting down.
+     * Check if the worker was asked to stop (`stop()` or SIGTERM).
+     *
+     * The running job is allowed to finish and its result is sent, so returning
+     * early is optional, but doing it keeps the handler inside `shutdownTimeout`,
+     * after which it is aborted and the job failed.
      */
     public function isCancelled(): bool
     {

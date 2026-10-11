@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Spooled\Resources;
 
-use Spooled\Errors\ValidationError;
+use Spooled\Errors\UnsupportedOperationError;
 use Spooled\Types\CustomWebhookResponse;
 
 /**
@@ -39,8 +39,12 @@ final class WebhookIngestionResource extends BaseResource
     /**
      * Ingest a GitHub webhook.
      *
-     * POST /api/v1/webhooks/{org_id}/github
+     * The API only serves `POST /api/v1/webhooks/{org_id}/custom`; the
+     * provider-specific `/github` handler was removed, so this always 404'd.
      *
+     * @deprecated Not supported by the Spooled API. Forward the event to
+     *             {@see self::custom()} (with `queue_name`) from your own endpoint;
+     *             {@see self::validateGitHubSignature()} still checks GitHub signatures.
      * @param array{
      *   githubEvent: string,
      *   webhookToken?: string,
@@ -48,46 +52,31 @@ final class WebhookIngestionResource extends BaseResource
      *   signature?: string,
      *   secret?: string
      * } $options
+     * @throws UnsupportedOperationError always, without a network call
      */
     public function github(
         string $orgId,
         string $body,
         array $options,
     ): void {
-        $signature = $options['signature'] ?? null;
-        $secret = $options['secret'] ?? null;
-        if ($signature === null && $secret !== null) {
-            $signature = $this->generateGitHubSignature($body, (string) $secret);
-        }
-        if ($signature === null) {
-            throw new ValidationError('GitHub webhook signature is required (provide `signature` or `secret`)');
-        }
+        unset($orgId, $body, $options);
 
-        $headers = [
-            'Content-Type' => 'application/json',
-            'X-GitHub-Event' => (string) ($options['githubEvent'] ?? ''),
-            'X-Hub-Signature-256' => (string) $signature,
-        ];
-
-        if ($headers['X-GitHub-Event'] === '') {
-            throw new ValidationError('GitHub webhook requires `githubEvent` option (X-GitHub-Event)');
-        }
-
-        if (($options['webhookToken'] ?? null) !== null) {
-            $headers['X-Webhook-Token'] = (string) $options['webhookToken'];
-        }
-        if (($options['forwardedProto'] ?? null) !== null) {
-            $headers['X-Forwarded-Proto'] = (string) $options['forwardedProto'];
-        }
-
-        $this->httpClient->postRaw("webhooks/{$orgId}/github", $body, headers: $headers);
+        throw new UnsupportedOperationError(
+            'WebhookIngestionResource::github',
+            'the API only serves webhooks/{org_id}/custom; verify the GitHub signature yourself '
+            . 'and forward the event with ingest->custom()',
+        );
     }
 
     /**
      * Ingest a Stripe webhook.
      *
-     * POST /api/v1/webhooks/{org_id}/stripe
+     * The API only serves `POST /api/v1/webhooks/{org_id}/custom`; the
+     * provider-specific `/stripe` handler was removed, so this always 404'd.
      *
+     * @deprecated Not supported by the Spooled API. Forward the event to
+     *             {@see self::custom()} (with `queue_name`) from your own endpoint;
+     *             {@see self::validateStripeSignature()} still checks Stripe signatures.
      * @param array{
      *   webhookToken?: string,
      *   forwardedProto?: string,
@@ -95,35 +84,20 @@ final class WebhookIngestionResource extends BaseResource
      *   secret?: string,
      *   timestamp?: int
      * } $options
+     * @throws UnsupportedOperationError always, without a network call
      */
     public function stripe(
         string $orgId,
         string $body,
         array $options = [],
     ): void {
-        $signature = $options['signature'] ?? null;
-        $secret = $options['secret'] ?? null;
-        $timestamp = $options['timestamp'] ?? null;
-        if ($signature === null && $secret !== null) {
-            $signature = $this->generateStripeSignature($body, (string) $secret, $timestamp !== null ? (int) $timestamp : null);
-        }
-        if ($signature === null) {
-            throw new ValidationError('Stripe webhook signature is required (provide `signature` or `secret`)');
-        }
+        unset($orgId, $body, $options);
 
-        $headers = [
-            'Content-Type' => 'application/json',
-            'Stripe-Signature' => (string) $signature,
-        ];
-
-        if (($options['webhookToken'] ?? null) !== null) {
-            $headers['X-Webhook-Token'] = (string) $options['webhookToken'];
-        }
-        if (($options['forwardedProto'] ?? null) !== null) {
-            $headers['X-Forwarded-Proto'] = (string) $options['forwardedProto'];
-        }
-
-        $this->httpClient->postRaw("webhooks/{$orgId}/stripe", $body, headers: $headers);
+        throw new UnsupportedOperationError(
+            'WebhookIngestionResource::stripe',
+            'the API only serves webhooks/{org_id}/custom; verify the Stripe signature yourself '
+            . 'and forward the event with ingest->custom()',
+        );
     }
 
     /**

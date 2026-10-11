@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Spooled\Resources;
 
 use InvalidArgumentException;
+use Spooled\Errors\UnsupportedOperationError;
 use Spooled\Types\AuthTokens;
 use Spooled\Types\CompleteSignupResponse;
 use Spooled\Types\CurrentUserResponse;
@@ -150,39 +151,57 @@ final class AuthResource extends BaseResource
 
     /**
      * Request password reset.
+     *
+     * Spooled has no password authentication, so there is no `auth/password/reset` route.
+     *
+     * @deprecated Not supported by the Spooled API. Sign in with an API key
+     *             ({@see self::login()}) or an emailed code ({@see self::emailStart()}).
+     * @throws UnsupportedOperationError always, without a network call
      */
     public function requestPasswordReset(string $email): SuccessResponse
     {
-        $response = $this->httpClient->post('auth/password/reset', [
-            'email' => $email,
-        ]);
+        unset($email);
 
-        return SuccessResponse::fromArray($response);
+        throw new UnsupportedOperationError(
+            'AuthResource::requestPasswordReset',
+            'the API has no password authentication; use auth->login() with an API key or auth->emailStart()',
+        );
     }
 
     /**
      * Confirm password reset.
+     *
+     * Spooled has no password authentication, so there is no `auth/password/confirm` route.
+     *
+     * @deprecated Not supported by the Spooled API.
+     * @throws UnsupportedOperationError always, without a network call
      */
     public function confirmPasswordReset(string $token, string $password): SuccessResponse
     {
-        $response = $this->httpClient->post('auth/password/confirm', [
-            'token' => $token,
-            'password' => $password,
-        ]);
+        unset($token, $password);
 
-        return SuccessResponse::fromArray($response);
+        throw new UnsupportedOperationError(
+            'AuthResource::confirmPasswordReset',
+            'the API has no password authentication',
+        );
     }
 
     /**
      * Change password.
+     *
+     * Spooled has no password authentication, so there is no `auth/password/change` route.
+     *
+     * @deprecated Not supported by the Spooled API. Rotate an API key instead
+     *             ({@see ApiKeysResource::regenerate()}).
+     * @throws UnsupportedOperationError always, without a network call
      */
     public function changePassword(string $currentPassword, string $newPassword): SuccessResponse
     {
-        $response = $this->httpClient->post('auth/password/change', [
-            'currentPassword' => $currentPassword,
-            'newPassword' => $newPassword,
-        ]);
+        unset($currentPassword, $newPassword);
 
-        return SuccessResponse::fromArray($response);
+        throw new UnsupportedOperationError(
+            'AuthResource::changePassword',
+            'the API has no password authentication; rotate an API key with apiKeys->regenerate()',
+        );
     }
 }

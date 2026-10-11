@@ -20,12 +20,28 @@ final class SpooledRealtime
 
     private ?WebSocketClient $wsClient = null;
 
+    /** @var callable(): ?string|null */
+    private readonly mixed $wsTokenProvider;
+
+    /** @var callable(): ?string|null */
+    private readonly mixed $accessTokenProvider;
+
+    /**
+     * @param callable(): ?string|null $wsTokenProvider Returns a currently valid JWT for the
+     *                                                  WebSocket endpoint (which accepts no API key). Called on every (re)connect.
+     * @param callable(): ?string|null $accessTokenProvider Returns the caller-owned JWT for
+     *                                                      SSE, or null to authenticate with the API key. Called on every (re)connect.
+     */
     public function __construct(
         ClientOptions $options,
         ?LoggerInterface $logger = null,
+        ?callable $wsTokenProvider = null,
+        ?callable $accessTokenProvider = null,
     ) {
         $this->options = $options;
         $this->logger = $logger;
+        $this->wsTokenProvider = $wsTokenProvider;
+        $this->accessTokenProvider = $accessTokenProvider;
     }
 
     /**
@@ -39,6 +55,7 @@ final class SpooledRealtime
                 apiKey: $this->options->apiKey,
                 accessToken: $this->options->accessToken,
                 logger: $this->logger,
+                tokenProvider: $this->accessTokenProvider,
             );
         }
 
@@ -56,6 +73,7 @@ final class SpooledRealtime
                 apiKey: $this->options->apiKey,
                 accessToken: $this->options->accessToken,
                 logger: $this->logger,
+                tokenProvider: $this->wsTokenProvider,
             );
         }
 

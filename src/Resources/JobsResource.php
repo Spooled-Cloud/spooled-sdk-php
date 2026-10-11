@@ -13,6 +13,7 @@ use Spooled\Types\CreateJobResult;
 use Spooled\Types\Job;
 use Spooled\Types\JobList;
 use Spooled\Types\JobStats;
+use Spooled\Util\FailureText;
 
 /**
  * DLQ (Dead Letter Queue) operations interface.
@@ -30,9 +31,10 @@ final class DlqOperations
      */
     public function list(array $params = []): JobList
     {
+        $params = self::mapQueueAlias($params);
         $response = $this->httpClient->get('jobs/dlq', $params);
 
-        return JobList::fromArray($response);
+        return JobList::fromArray($response, self::requestedLimit($params));
     }
 
     /**
@@ -43,7 +45,7 @@ final class DlqOperations
      */
     public function retry(array $params): array
     {
-        return $this->httpClient->post('jobs/dlq/retry', $params);
+        return $this->httpClient->post('jobs/dlq/retry', self::mapQueueAlias($params));
     }
 
     /**
@@ -54,7 +56,36 @@ final class DlqOperations
      */
     public function purge(array $params): array
     {
-        return $this->httpClient->post('jobs/dlq/purge', $params);
+        return $this->httpClient->post('jobs/dlq/purge', self::mapQueueAlias($params));
+    }
+
+    /**
+     * Map the documented `queue` alias to the API's `queueName`.
+     *
+     * The DLQ retry and purge bodies accept only `queue_name` and ignore
+     * unknown keys, so an unmapped `queue` silently widened the operation to
+     * EVERY queue of the organization (a purge deleted dead-lettered jobs
+     * everywhere). `create`/`list`/`claim` already map it; these did not.
+     *
+     * @param array<string, mixed> $params
+     * @return array<string, mixed>
+     */
+    private static function mapQueueAlias(array $params): array
+    {
+        if (isset($params['queue']) && !isset($params['queueName'])) {
+            $params['queueName'] = $params['queue'];
+        }
+        unset($params['queue']);
+
+        return $params;
+    }
+
+    /**
+     * @param array<string, mixed> $params
+     */
+    private static function requestedLimit(array $params): ?int
+    {
+        return isset($params['limit']) ? (int) $params['limit'] : null;
     }
 }
 
@@ -90,7 +121,10 @@ final class JobsResource extends BaseResource
             unset($params['scheduledFor']);
         }
 
-        $response = $this->httpClient->post('jobs', $params);
+        // POST is not retried by default (a lost response would duplicate the job).
+        // With an idempotency key the server deduplicates, so a retry is safe.
+        $idempotent = ($params['idempotencyKey'] ?? $params['idempotency_key'] ?? '') !== '';
+        $response = $this->httpClient->post('jobs', $params, forceRetry: $idempotent);
 
         return CreateJobResult::fromArray($response);
     }
@@ -132,7 +166,9 @@ final class JobsResource extends BaseResource
 
         $response = $this->httpClient->get('jobs', $params);
 
-        return JobList::fromArray($response);
+        // GET /jobs is a bare array with no limit or total; remember what we
+        // asked for so JobList can tell a full page from the last one.
+        return JobList::fromArray($response, isset($params['limit']) ? (int) $params['limit'] : null);
     }
 
     /**
@@ -211,11 +247,37 @@ final class JobsResource extends BaseResource
     public function bulkEnqueue(array $params): BulkEnqueueResponse
     {
         // Support both formats: {queueName, jobs} or direct array of jobs
-        if (isset($params['queueName']) || isset($params['jobs'])) {
+        if (isset($params['queueName']) || isset($params['queue']) || isset($params['jobs'])) {
+            // Map 'queue' to 'queueName' (the API requires queue_name; the
+            // documented `['queue' => ...]` form always failed validation).
+            if (isset($params['queue']) && !isset($params['queueName'])) {
+                $params['queueName'] = $params['queue'];
+            }
+            unset($params['queue']);
             $response = $this->httpClient->post('jobs/bulk', $params);
         } else {
-            // Direct array of jobs
-            $response = $this->httpClient->post('jobs/bulk', ['jobs' => $params]);
+            // Direct array of jobs: the API takes one queue for the whole batch,
+            // so it can only be inferred when every job names the same queue.
+            $queues = array_unique(array_map(
+                static fn (mixed $job): string => is_array($job) ? (string) ($job['queueName'] ?? $job['queue'] ?? '') : '',
+                $params,
+            ));
+            if (count($queues) !== 1 || $queues[array_key_first($queues)] === '') {
+                throw new InvalidArgumentException(
+                    'bulkEnqueue() needs a queue: pass [\'queueName\' => ..., \'jobs\' => [...]] '
+                    . 'or a list of jobs that all name the same queueName.',
+                );
+            }
+            $response = $this->httpClient->post('jobs/bulk', [
+                'queueName' => (string) reset($queues),
+                'jobs' => array_map(static function (mixed $job): mixed {
+                    if (is_array($job)) {
+                        unset($job['queueName'], $job['queue']);
+                    }
+
+                    return $job;
+                }, $params),
+            ]);
         }
 
         return BulkEnqueueResponse::fromArray($response);
@@ -244,34 +306,46 @@ final class JobsResource extends BaseResource
     /**
      * Complete a job (worker ack).
      *
+     * Retried on network errors, timeouts and 5xx (bounded by the client's
+     * retry config): the call is fenced by the lease, and a completion lost to
+     * a dropped connection would otherwise re-run the job after its lease expires.
+     * If the first attempt actually landed, the retry is answered with
+     * 409 "already completed" (a ConflictError).
+     *
      * @param array<string, mixed> $params {workerId, result?, leaseId?}
      * @return array{success: bool}
      */
     public function complete(string $jobId, array $params): array
     {
-        return $this->httpClient->post("jobs/{$jobId}/complete", $params);
+        return $this->httpClient->post("jobs/{$jobId}/complete", $params, forceRetry: true);
     }
 
     /**
-     * Fail a job (worker nack).
+     * Fail a job (worker nack). Retried like {@see self::complete()}.
+     *
+     * The error text is coerced to what the API accepts (never empty, at most
+     * 2048 characters); an empty or over-long message is rejected with a 400,
+     * which left the job `processing` until its lease expired.
      *
      * @param array<string, mixed> $params {workerId, error, leaseId?}
      * @return array{success: bool, error?: string}
      */
     public function fail(string $jobId, array $params): array
     {
-        return $this->httpClient->post("jobs/{$jobId}/fail", $params);
+        $params['error'] = FailureText::coerce(isset($params['error']) ? (string) $params['error'] : null);
+
+        return $this->httpClient->post("jobs/{$jobId}/fail", $params, forceRetry: true);
     }
 
     /**
-     * Extend job lease (heartbeat).
+     * Extend job lease (heartbeat). Idempotent, so it is retried like {@see self::complete()}.
      *
      * @param array<string, mixed> $params {workerId, leaseDurationSecs, leaseId?}
      * @return array{success: bool}
      */
     public function heartbeat(string $jobId, array $params): array
     {
-        return $this->httpClient->post("jobs/{$jobId}/heartbeat", $params);
+        return $this->httpClient->post("jobs/{$jobId}/heartbeat", $params, forceRetry: true);
     }
 
     // Legacy DLQ methods for backward compatibility

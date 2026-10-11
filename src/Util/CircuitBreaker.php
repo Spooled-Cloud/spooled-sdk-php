@@ -6,6 +6,7 @@ namespace Spooled\Util;
 
 use Spooled\Config\CircuitBreakerConfig;
 use Spooled\Errors\CircuitBreakerOpenError;
+use Spooled\Errors\RateLimitError;
 use Spooled\Errors\SpooledError;
 use Throwable;
 
@@ -225,6 +226,13 @@ final class CircuitBreaker
         $status = $e instanceof SpooledError ? $e->statusCode : ($e->getCode() ?: null);
 
         if ($status !== null) {
+            // A plan-limit 429 is the account hitting its cap, not the service
+            // misbehaving. Counting it would open the breaker on enqueue quota
+            // errors and then block acks (complete/fail) for the open window.
+            if ($e instanceof RateLimitError && $e->isQuotaExceeded()) {
+                return false;
+            }
+
             // 429 (rate limit) should trigger the circuit breaker.
             if ($status === 429) {
                 return true;

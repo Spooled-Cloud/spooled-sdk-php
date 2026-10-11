@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Spooled\Resources;
 
+use Spooled\Errors\UnsupportedOperationError;
 use Spooled\Http\HttpClient;
 use Spooled\Types\Job;
 use Spooled\Types\JobList;
@@ -222,22 +223,33 @@ final class AdminResource extends BaseResource
     /**
      * Get system configuration (admin).
      *
+     * There is no `GET /admin/config`; the admin routes are organizations,
+     * stats and plans.
+     *
+     * @deprecated Not supported by the Spooled API.
      * @return array<string, mixed>
+     * @throws UnsupportedOperationError always, without a network call
      */
     public function getConfig(): array
     {
-        return $this->httpClient->get('admin/config', [], $this->getAdminHeaders());
+        throw new UnsupportedOperationError('AdminResource::getConfig', 'the API has no admin/config route');
     }
 
     /**
      * Update system configuration (admin).
      *
+     * There is no `PUT /admin/config`.
+     *
+     * @deprecated Not supported by the Spooled API.
      * @param array<string, mixed> $config
      * @return array<string, mixed>
+     * @throws UnsupportedOperationError always, without a network call
      */
     public function updateConfig(array $config): array
     {
-        return $this->httpClient->put('admin/config', $config, [], $this->getAdminHeaders());
+        unset($config);
+
+        throw new UnsupportedOperationError('AdminResource::updateConfig', 'the API has no admin/config route');
     }
 
     /**
@@ -260,12 +272,21 @@ final class AdminResource extends BaseResource
     /**
      * Run maintenance tasks (admin).
      *
+     * There is no `POST /admin/maintenance`; maintenance runs on the server's scheduler.
+     *
+     * @deprecated Not supported by the Spooled API.
      * @param array<string, mixed> $params
      * @return array<string, mixed>
+     * @throws UnsupportedOperationError always, without a network call
      */
     public function runMaintenance(array $params = []): array
     {
-        return $this->httpClient->post('admin/maintenance', $params, [], $this->getAdminHeaders());
+        unset($params);
+
+        throw new UnsupportedOperationError(
+            'AdminResource::runMaintenance',
+            'the API has no admin/maintenance route; maintenance runs on the server scheduler',
+        );
     }
 
     /**

@@ -48,6 +48,15 @@ final class WebSocketClient
 
     private readonly ?string $accessToken;
 
+    /**
+     * Returns a currently valid JWT, or null. Asked again on every (re)connect so
+     * a long-lived connection loop never presents an expired token; the caller
+     * decides how the token is minted and cached.
+     *
+     * @var callable(): ?string|null
+     */
+    private readonly mixed $tokenProvider;
+
     private bool $running = false;
 
     private mixed $connection = null;
@@ -69,11 +78,13 @@ final class WebSocketClient
         ?string $apiKey = null,
         ?string $accessToken = null,
         ?LoggerInterface $logger = null,
+        ?callable $tokenProvider = null,
     ) {
         $this->wsUrl = rtrim($wsUrl, '/');
         $this->apiKey = $apiKey;
         $this->accessToken = $accessToken;
         $this->logger = $logger ?? new NullLogger();
+        $this->tokenProvider = $tokenProvider;
     }
 
     /**
@@ -161,7 +172,7 @@ final class WebSocketClient
         // The /api/v1/ws endpoint only authenticates a JWT in ?token=. A raw
         // API key is not accepted there; it must first be exchanged for an
         // access token via POST /api/v1/auth/login.
-        if ($this->accessToken === null || $this->accessToken === '') {
+        if ($this->resolveAccessToken() === null) {
             $hint = ($this->apiKey !== null && $this->apiKey !== '')
                 ? ' An API key was provided, but the WebSocket endpoint only accepts a JWT;'
                     . ' exchange it for an access token via POST /api/v1/auth/login first.'
@@ -188,8 +199,22 @@ final class WebSocketClient
      */
     private function openConnection(): void
     {
-        $url = $this->buildUrl();
-        $this->logger->info('Connecting to WebSocket', ['url' => $url]);
+        try {
+            $url = $this->buildUrl();
+        } catch (Throwable $e) {
+            // Minting a fresh token failed (network, rate limit): retry later
+            // rather than letting the exception unwind the running event loop.
+            $this->logger->error('WebSocket token unavailable', ['error' => $e->getMessage()]);
+            $this->emit('error', ['error' => $e]);
+
+            if ($this->running) {
+                $this->scheduleReconnect();
+            }
+
+            return;
+        }
+
+        $this->logger->info('Connecting to WebSocket');
 
         // Use the shared React event loop and Ratchet client
         $loop = \React\EventLoop\Loop::get();
@@ -358,11 +383,28 @@ final class WebSocketClient
         // The backend /ws endpoint authenticates only a JWT in ?token=.
         // connect() guarantees an access token is present; there is no
         // api_key fallback because the endpoint does not accept it.
-        if ($this->accessToken !== null && $this->accessToken !== '') {
-            $url .= '?' . http_build_query(['token' => $this->accessToken]);
+        $token = $this->resolveAccessToken();
+        if ($token !== null) {
+            $url .= '?' . http_build_query(['token' => $token]);
         }
 
         return $url;
+    }
+
+    /**
+     * The JWT to present right now: the provider's (fresh each call) when one
+     * is configured, else the static access token.
+     */
+    private function resolveAccessToken(): ?string
+    {
+        if ($this->tokenProvider !== null) {
+            $token = ($this->tokenProvider)();
+            if (is_string($token) && $token !== '') {
+                return $token;
+            }
+        }
+
+        return $this->accessToken !== null && $this->accessToken !== '' ? $this->accessToken : null;
     }
 
     /**

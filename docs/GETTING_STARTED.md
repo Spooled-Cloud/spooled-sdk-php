@@ -88,7 +88,8 @@ $worker->process(function (JobContext $ctx): array {
 
 // Handle graceful shutdown
 if (function_exists('pcntl_signal')) {
-    pcntl_signal(SIGTERM, fn() => $worker->stop());
+    pcntl_async_signals(true);
+    pcntl_signal(SIGTERM, fn() => $worker->stop()); // finishes the running job, then start() returns
     pcntl_signal(SIGINT, fn() => $worker->stop());
 }
 

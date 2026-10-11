@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Spooled\Resources;
 
+use Spooled\Errors\UnsupportedOperationError;
 use Spooled\Types\CreateOrganizationResponse;
 use Spooled\Types\Organization;
 use Spooled\Types\OrganizationList;
@@ -159,23 +160,41 @@ final class OrganizationsResource extends BaseResource
 
     /**
      * Clear/delete the webhook token for the current organization.
+     *
+     * The route exists but its handler always answers 422, so clearing a token
+     * has never worked.
+     *
+     * @deprecated Not supported by the Spooled API. Rotate the token with
+     *             {@see self::regenerateWebhookToken()}.
+     * @throws UnsupportedOperationError always, without a network call
      */
     public function clearWebhookToken(): void
     {
-        // Backend requires confirm: true to clear the token
-        $this->httpClient->post('organizations/webhook-token/clear', ['confirm' => true]);
+        throw new UnsupportedOperationError(
+            'OrganizationsResource::clearWebhookToken',
+            'the API cannot clear a webhook token (it always answers 422); use regenerateWebhookToken()',
+        );
     }
 
     /**
      * Invite a member to an organization.
      *
+     * Members are API keys; there are no user accounts to invite and no
+     * `organizations/{id}/members/invite` route.
+     *
+     * @deprecated Not supported by the Spooled API. Create an API key instead
+     *             ({@see ApiKeysResource::create()}).
      * @param array<string, mixed> $params {email, role}
+     * @throws UnsupportedOperationError always, without a network call
      */
     public function inviteMember(string $orgId, array $params): OrganizationMember
     {
-        $response = $this->httpClient->post("organizations/{$orgId}/members/invite", $params);
+        unset($orgId, $params);
 
-        return OrganizationMember::fromArray($response);
+        throw new UnsupportedOperationError(
+            'OrganizationsResource::inviteMember',
+            'members are API keys, not invited users; create one with apiKeys->create()',
+        );
     }
 
     /**
@@ -194,12 +213,21 @@ final class OrganizationsResource extends BaseResource
     /**
      * Update a member's role.
      *
+     * A member's role is derived from its API key's `queues` scope; there is no
+     * `PUT organizations/{id}/members/{memberId}` route.
+     *
+     * @deprecated Not supported by the Spooled API. Change the key's queue scope instead
+     *             ({@see ApiKeysResource::update()}).
      * @param array<string, mixed> $params {role}
+     * @throws UnsupportedOperationError always, without a network call
      */
     public function updateMemberRole(string $orgId, string $memberId, array $params): OrganizationMember
     {
-        $response = $this->httpClient->put("organizations/{$orgId}/members/{$memberId}", $params);
+        unset($orgId, $memberId, $params);
 
-        return OrganizationMember::fromArray($response);
+        throw new UnsupportedOperationError(
+            'OrganizationsResource::updateMemberRole',
+            'a member role is derived from its API key queue scope; update the key with apiKeys->update()',
+        );
     }
 }

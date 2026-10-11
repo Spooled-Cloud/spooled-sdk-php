@@ -292,6 +292,12 @@ final readonly class CreateJobResult
  */
 final readonly class JobList
 {
+    /** Page size the API applies when a list request names no `limit`. */
+    public const DEFAULT_PAGE_SIZE = 50;
+
+    /** Largest page the API returns; a bigger `limit` is clamped to this. */
+    public const MAX_PAGE_SIZE = 100;
+
     /**
      * @param array<Job> $jobs
      */
@@ -307,9 +313,14 @@ final readonly class JobList
     /**
      * Create from API response.
      *
+     * `GET /jobs` returns a bare array with no `limit`, `total` or `hasMore`, so
+     * a full page can only be told from the last one by comparing the row count
+     * with the page size that was requested.
+     *
      * @param array<string, mixed> $data
+     * @param int|null $requestedLimit The `limit` the list request sent, if any
      */
-    public static function fromArray(array $data): self
+    public static function fromArray(array $data, ?int $requestedLimit = null): self
     {
         // Handle both wrapped and raw array responses
         // Wrapped: { "jobs": [...], "total": 10, ... }
@@ -322,12 +333,17 @@ final readonly class JobList
             $jobsData,
         );
 
+        // The API clamps the page to 1..100, so a `limit` of 500 still returns 100 rows.
+        $pageSize = isset($data['pageSize']) || isset($data['limit'])
+            ? (int) ($data['pageSize'] ?? $data['limit'])
+            : max(1, min(self::MAX_PAGE_SIZE, $requestedLimit ?? self::DEFAULT_PAGE_SIZE));
+
         return new self(
             jobs: $jobs,
             total: (int) ($data['total'] ?? $data['totalJobs'] ?? count($jobs)),
             page: (int) ($data['page'] ?? 1),
-            pageSize: (int) ($data['pageSize'] ?? $data['limit'] ?? count($jobs)),
-            hasMore: (bool) ($data['hasMore'] ?? (count($jobs) > 0 && count($jobs) === (int) ($data['limit'] ?? 100))),
+            pageSize: $pageSize,
+            hasMore: (bool) ($data['hasMore'] ?? (count($jobs) > 0 && count($jobs) >= max(1, $pageSize))),
         );
     }
 }

@@ -17,8 +17,10 @@ use Spooled\Errors\RateLimitError;
 use Spooled\Errors\ServerError;
 use Spooled\Errors\TimeoutError;
 use Spooled\Resources\JobsResource;
+use Spooled\Resources\WorkersResource;
 use Spooled\SpooledClient;
 use Spooled\Types\ClaimedJob;
+use Spooled\Util\FailureText;
 use Spooled\Version;
 use Throwable;
 
@@ -47,6 +49,7 @@ enum WorkerEvent: string
     case JOB_STARTED = 'job:started';
     case JOB_COMPLETED = 'job:completed';
     case JOB_FAILED = 'job:failed';
+    case JOB_TIMEOUT = 'job:timeout';
 }
 
 /**
@@ -66,6 +69,12 @@ final class ActiveJob
  * Spooled Worker - processes jobs from a queue.
  *
  * Matches the Node.js SDK SpooledWorker API pattern.
+ *
+ * Handlers run one at a time in this process. A forked child renews the running
+ * job's lease and sends the worker heartbeat while the handler blocks.
+ * `stop()` (from a signal handler or anywhere else) only requests a stop: the
+ * running job finishes and is acknowledged, then the worker deregisters and
+ * `start()` returns. See "Graceful Shutdown" in docs/workers.md.
  *
  * @example
  * ```php
@@ -101,6 +110,29 @@ class SpooledWorker
 
     private const CHILD_WAIT_POLL_MICROS = 10_000;
 
+    /**
+     * Jobs claimed per poll. Handlers run serially in this process, so claiming
+     * more than one only parks the extra jobs' leases until their turn; once the
+     * earlier handlers outlast the lease, the later jobs start already expired.
+     */
+    private const MAX_CLAIM_PER_POLL = 1;
+
+    /** Slice used while idle so a stop request or signal is noticed promptly. */
+    private const IDLE_SLICE_MICROS = 100_000;
+
+    /** Retry a failed worker heartbeat after this long (seconds), at most. */
+    private const WORKER_HEARTBEAT_RETRY_SECONDS = 5.0;
+
+    /**
+     * The lease renewal child stops extending a lease this long (seconds) after
+     * the job's own timeout, in case the handler is stuck inside a native call
+     * that the timeout signal cannot interrupt.
+     */
+    private const RENEWAL_TIMEOUT_GRACE_SECONDS = 2.0;
+
+    /** A worker heartbeat in the child may not block longer than this share of the safe lease time. */
+    private const MIN_WORKER_HEARTBEAT_BUDGET_SECONDS = 0.05;
+
     private readonly SpooledClient $client;
 
     private readonly WorkerConfig $config;
@@ -122,6 +154,21 @@ class SpooledWorker
     private int $failedJobs = 0;
 
     private ?float $lastWorkerHeartbeat = null;
+
+    /** stop() arrived while start() was still registering. */
+    private bool $stopRequested = false;
+
+    /** When stop() was called (microtime); starts the shutdown-timeout clock. */
+    private ?float $stopRequestedAt = null;
+
+    /** True only while the user handler is on the stack; gates the timeout alarm. */
+    private bool $handlerRunning = false;
+
+    /** Absolute microtime at which the running handler exceeds its job timeout. */
+    private ?float $jobDeadline = null;
+
+    /** @var callable|int|null */
+    private mixed $previousAlarmHandler = null;
 
     private ?int $leaseRenewalPid = null;
 
@@ -247,7 +294,8 @@ class SpooledWorker
     /**
      * Start the worker.
      *
-     * This method blocks until stop() is called.
+     * This method blocks until stop() is called, then returns once the running
+     * job (if any) has been acknowledged and the worker has deregistered.
      */
     public function start(): void
     {
@@ -292,6 +340,11 @@ class SpooledWorker
                 'queueName' => $this->config->queueName,
             ]);
 
+            // A stop() that arrived mid-registration is honoured now.
+            if ($this->stopRequested) {
+                $this->stop();
+            }
+
             // Main poll loop
             $this->runPollLoop();
 
@@ -306,28 +359,40 @@ class SpooledWorker
     }
 
     /**
-     * Stop the worker gracefully.
+     * Ask the worker to stop gracefully.
      *
-     * Waits for active jobs to complete (with timeout).
+     * This only requests the stop and returns at once, so it is safe to call
+     * from a signal handler, which PHP runs on top of the handler that is
+     * currently executing. The worker stops claiming jobs; a job already running
+     * finishes and its result is sent (`complete`, or `fail` if the handler
+     * threw); then the worker deregisters last and `start()` returns.
+     *
+     * If the running handler is still going `shutdownTimeout` milliseconds
+     * after this call, it is aborted and the job is failed with
+     * "Worker shutdown timeout". Handlers can poll `JobContext::isCancelled()`
+     * to wrap up early.
      */
     public function stop(): void
     {
+        if ($this->state === WorkerState::STARTING) {
+            // Registration is still in flight; start() picks this up right after it.
+            $this->stopRequested = true;
+
+            return;
+        }
+
         if ($this->state !== WorkerState::RUNNING) {
             return;
         }
 
         $this->state = WorkerState::STOPPING;
-        $this->debug('Stopping worker...');
+        $this->stopRequestedAt = microtime(true);
+        $this->debug('Stop requested; the running job, if any, may finish');
 
-        // Cancel active jobs
-        foreach ($this->activeJobs as $activeJob) {
-            $activeJob->cancelled = true;
+        // Start the shutdown clock for a handler that is already running.
+        if ($this->handlerRunning) {
+            $this->rearmHandlerAlarm();
         }
-
-        // Wait for active jobs (with timeout)
-        $this->waitForActiveJobs();
-
-        $this->state = WorkerState::STOPPED;
     }
 
     /**
@@ -336,6 +401,11 @@ class SpooledWorker
     private function runPollLoop(): void
     {
         while ($this->state === WorkerState::RUNNING) {
+            $this->dispatchSignals();
+            if ($this->state !== WorkerState::RUNNING) {
+                break;
+            }
+
             // Send worker heartbeat if needed
             $this->maybeWorkerHeartbeat();
 
@@ -351,13 +421,11 @@ class SpooledWorker
                 $result = $this->client->jobs->claim([
                     'queueName' => $this->config->queueName,
                     'workerId' => $this->workerId,
-                    'limit' => min($availableSlots, 10),
+                    'limit' => min($availableSlots, self::MAX_CLAIM_PER_POLL),
                     'leaseDurationSecs' => $this->config->leaseDuration,
                 ]);
 
-                foreach ($result->jobs as $job) {
-                    $this->processJob($job);
-                }
+                $this->processClaimedJobs($result->jobs);
 
                 if (count($result->jobs) === 0) {
                     $this->sleep($this->config->pollInterval);
@@ -371,9 +439,40 @@ class SpooledWorker
     }
 
     /**
-     * Process a single job.
+     * Run the jobs of one claim, one after another.
+     *
+     * The claim asks for a single job, so this normally gets one. If the server
+     * returns more, the ones waiting keep their leases renewed by the renewal
+     * child (see runLeaseRenewalLoop) until their turn.
+     *
+     * @param array<ClaimedJob> $jobs
      */
-    private function processJob(ClaimedJob $job): void
+    private function processClaimedJobs(array $jobs): void
+    {
+        foreach ($jobs as $index => $job) {
+            // A job claimed before stop() was called is still ours and runs (the
+            // shutdown timeout bounds it). Beyond that, no new work starts: the
+            // rest of an over-delivered batch is left to its lease, which the
+            // server recovers.
+            if ($index > 0 && $this->state !== WorkerState::RUNNING) {
+                $skipped = count($jobs) - $index;
+                $this->logger->warning(
+                    "[SpooledWorker] Stop requested; not starting {$skipped} claimed job(s), their leases will expire",
+                );
+
+                return;
+            }
+
+            $this->processJob($job, array_slice($jobs, $index + 1));
+        }
+    }
+
+    /**
+     * Process a single job.
+     *
+     * @param array<ClaimedJob> $pendingJobs Jobs claimed in the same batch that still wait for their turn
+     */
+    private function processJob(ClaimedJob $job, array $pendingJobs = []): void
     {
         $this->emit(WorkerEvent::JOB_CLAIMED->value, [
             'jobId' => $job->id,
@@ -398,14 +497,19 @@ class SpooledWorker
         );
 
         $handlerStarted = false;
+        $returned = false;
+        $result = null;
 
         try {
-            $this->startLeaseRenewal($activeJob);
+            $this->startLeaseRenewal($activeJob, $pendingJobs);
             $handlerStarted = true;
 
             try {
+                $this->beginHandlerGuard($job);
                 $result = ($this->handler)($context);
+                $returned = true;
             } finally {
+                $this->endHandlerGuard();
                 // Renewal must be fully cancelled and reaped before settlement so
                 // it can never race complete/fail or renew a replacement lease.
                 $this->stopLeaseRenewal();
@@ -417,10 +521,14 @@ class SpooledWorker
                 return;
             }
 
+            // Completes even when stop() was requested meanwhile: a handler that
+            // finished must never have its result dropped.
             $this->completeJob($job, $result);
         } catch (LeaseLostException $e) {
             $activeJob->cancelled = true;
             $this->reportWorkerError($e, $job, 'renew');
+        } catch (JobTimeoutError|ShutdownTimeoutError $e) {
+            $this->settleAbortedJob($job, $e, $returned, $result);
         } catch (Throwable $e) {
             if (!$handlerStarted) {
                 $this->reportWorkerError($e, $job, 'renew');
@@ -439,6 +547,35 @@ class SpooledWorker
             $this->stopLeaseRenewal();
             unset($this->activeJobs[$job->id]);
         }
+    }
+
+    /**
+     * Settle a job whose handler was aborted by the job timeout or by the
+     * shutdown timeout.
+     *
+     * If the handler had in fact already returned when the alarm landed (the
+     * window is a few instructions), its result is sent, not discarded.
+     */
+    private function settleAbortedJob(ClaimedJob $job, Throwable $abort, bool $returned, mixed $result): void
+    {
+        if ($returned) {
+            $this->completeJob($job, $result);
+
+            return;
+        }
+
+        if ($abort instanceof JobTimeoutError) {
+            $this->emit(WorkerEvent::JOB_TIMEOUT->value, [
+                'jobId' => $job->id,
+                'queueName' => $job->queueName,
+                'timeoutSeconds' => $job->timeoutSeconds,
+            ]);
+            $this->failJob($job, 'Job timeout exceeded');
+
+            return;
+        }
+
+        $this->failJob($job, 'Worker shutdown timeout');
     }
 
     /**
@@ -494,6 +631,9 @@ class SpooledWorker
             return;
         }
 
+        // The API rejects an empty or over-long message (400), which would leave
+        // the job processing until its lease expired and lose the real error.
+        $error = FailureText::coerce($error);
         $willRetry = $job->retryCount < $job->maxRetries;
 
         try {
@@ -528,7 +668,10 @@ class SpooledWorker
         }
     }
 
-    private function startLeaseRenewal(ActiveJob $activeJob): void
+    /**
+     * @param array<ClaimedJob> $pendingJobs Claimed jobs waiting behind this one; the child keeps their leases alive too
+     */
+    private function startLeaseRenewal(ActiveJob $activeJob, array $pendingJobs = []): void
     {
         if (!$this->workerId) {
             return;
@@ -569,7 +712,15 @@ class SpooledWorker
 
         if ($pid === 0) {
             $this->configureRenewalChild($parentPid, $previousSignalMask);
-            $this->runLeaseRenewalLoop($activeJob->job, $parentPid, $renewalOptions);
+
+            try {
+                $this->runLeaseRenewalLoop($activeJob->job, $pendingJobs, $parentPid, $renewalOptions);
+            } catch (Throwable) {
+                // The loop never returns. If it somehow throws, the child must
+                // not unwind into the parent's code path (it would run the job
+                // a second time); tell the parent the lease can no longer be kept.
+            }
+            $this->signalLeaseLoss($parentPid);
         }
 
         pcntl_sigprocmask(SIG_SETMASK, $previousSignalMask);
@@ -581,7 +732,9 @@ class SpooledWorker
         if (!function_exists('pcntl_fork')
             || !function_exists('pcntl_signal')
             || !function_exists('pcntl_sigprocmask')
-            || !function_exists('posix_kill')) {
+            || !function_exists('pcntl_alarm')
+            || !function_exists('posix_kill')
+            || !function_exists('posix_setpgid')) {
             throw new RuntimeException(
                 'SpooledWorker automatic lease renewal requires the pcntl and posix extensions.',
             );
@@ -592,6 +745,13 @@ class SpooledWorker
     private function configureRenewalChild(int $parentPid, array $previousSignalMask = []): void
     {
         $this->renewalChildCleanExit = false;
+        // Own process group: a SIGTERM/SIGINT aimed at the worker's whole group
+        // (Supervisor stopasgroup, Ctrl-C in a terminal, `kill -TERM -<pgid>`)
+        // would otherwise kill this child too, and the job being drained would
+        // lose lease renewal and worker heartbeat while it finishes.
+        // The parent still ends this child by pid; if the parent dies instead,
+        // exitIfOrphaned() makes it exit at its next wake-up without renewing.
+        @posix_setpgid(0, 0);
         pcntl_async_signals(true);
         pcntl_signal(SIGUSR1, SIG_IGN);
         pcntl_signal(SIGPIPE, SIG_IGN);
@@ -609,21 +769,87 @@ class SpooledWorker
         });
     }
 
-    private function runLeaseRenewalLoop(ClaimedJob $job, int $parentPid, ClientOptions $baseOptions): void
-    {
-        $intervalMicros = max(
-            1,
-            (int) round($this->config->leaseDuration * $this->config->heartbeatFraction * 1_000_000),
-        );
-        $leaseDeadline = microtime(true) + $this->config->leaseDuration;
-        $nextDelayMicros = $intervalMicros;
+    /**
+     * Child process body: keeps the running job's lease (and those of any jobs
+     * claimed with it that still wait) renewed, and sends the worker heartbeat,
+     * until the parent ends it. Never returns.
+     *
+     * The worker heartbeat has to come from here: the parent is blocked inside
+     * the handler, and the scheduler marks a worker offline after two minutes
+     * without one, which releases (or dead-letters) the jobs of a perfectly
+     * healthy worker that is simply busy with a long job.
+     *
+     * @param array<ClaimedJob> $pendingJobs
+     */
+    private function runLeaseRenewalLoop(
+        ClaimedJob $job,
+        array $pendingJobs,
+        int $parentPid,
+        ClientOptions $baseOptions,
+    ): void {
+        $leaseDuration = $this->config->leaseDuration;
+        $renewEverySeconds = max(0.000001, $leaseDuration * $this->config->heartbeatFraction);
+        $heartbeatEverySeconds = max(0.001, $this->config->heartbeatInterval / 1000);
+
+        $startedAt = microtime(true);
+        $leases = [$job->id => ['job' => $job, 'deadline' => $startedAt + $leaseDuration, 'current' => true]];
+        foreach ($pendingJobs as $pendingJob) {
+            $leases[$pendingJob->id] = ['job' => $pendingJob, 'deadline' => $startedAt + $leaseDuration, 'current' => false];
+        }
+
+        $giveUpAt = $job->timeoutSeconds > 0
+            ? $startedAt + $job->timeoutSeconds + self::RENEWAL_TIMEOUT_GRACE_SECONDS
+            : null;
+        $nextRenewAt = $startedAt + $renewEverySeconds;
+        $nextWorkerHeartbeatAt = max($startedAt, ($this->lastWorkerHeartbeat ?? 0.0) + $heartbeatEverySeconds);
 
         while (true) {
-            usleep($nextDelayMicros);
+            $wakeAt = min($nextRenewAt, $nextWorkerHeartbeatAt, $giveUpAt ?? INF);
+            usleep(max(1, (int) round(($wakeAt - microtime(true)) * 1_000_000)));
             $this->exitIfOrphaned($parentPid);
 
+            if ($giveUpAt !== null && microtime(true) >= $giveUpAt) {
+                // The handler is past its job timeout. The parent aborts it with
+                // SIGALRM; reaching this point means it is stuck in a native call
+                // that signal cannot interrupt. Stop extending the lease so the
+                // server can recover the job instead of waiting on a hung process.
+                $this->terminateRenewalChild();
+            }
+
+            if (microtime(true) >= $nextRenewAt) {
+                $retryInSeconds = $this->renewLeases($leases, $parentPid, $baseOptions);
+                $nextRenewAt = microtime(true) + ($retryInSeconds ?? $renewEverySeconds);
+            }
+
+            if (microtime(true) >= $nextWorkerHeartbeatAt) {
+                $nextWorkerHeartbeatAt = microtime(true) + $this->sendWorkerHeartbeatFromChild(
+                    $leases,
+                    $baseOptions,
+                    $heartbeatEverySeconds,
+                );
+            }
+        }
+    }
+
+    /**
+     * Renew every tracked lease once.
+     *
+     * A lost lease on the running job signals the parent (SIGUSR1) and ends the
+     * child; a lost lease on a job that is still waiting just drops it from the
+     * set, so the running handler is not disturbed by a job it has not reached.
+     *
+     * @param array<string, array{job: ClaimedJob, deadline: float, current: bool}> $leases
+     * @return float|null Seconds until the next attempt when a renewal must be retried sooner, null when all succeeded
+     */
+    private function renewLeases(array &$leases, int $parentPid, ClientOptions $baseOptions): ?float
+    {
+        $retryInSeconds = null;
+
+        foreach ($leases as $id => $lease) {
+            $job = $lease['job'];
+
             try {
-                $remainingSeconds = $leaseDeadline - microtime(true);
+                $remainingSeconds = $lease['deadline'] - microtime(true);
                 $renewalJobs = $this->createRenewalJobsResource(
                     $this->buildRenewalClientOptions($baseOptions, $remainingSeconds),
                 );
@@ -638,29 +864,89 @@ class SpooledWorker
                 $response = $renewalJobs->heartbeat($job->id, $params);
                 $this->exitIfOrphaned($parentPid);
                 if (($response['success'] ?? true) !== true) {
-                    $this->signalLeaseLoss($parentPid);
+                    $this->handleLostLease($leases, $id, $parentPid);
+
+                    continue;
                 }
 
-                $leaseDeadline = microtime(true) + $this->config->leaseDuration;
-                $nextDelayMicros = $intervalMicros;
+                $leases[$id]['deadline'] = microtime(true) + $this->config->leaseDuration;
             } catch (ConflictError) {
-                $this->signalLeaseLoss($parentPid);
+                $this->handleLostLease($leases, $id, $parentPid);
             } catch (NetworkError|RateLimitError|ServerError|TimeoutError) {
-                $remainingMicros = (int) (($leaseDeadline - microtime(true)) * 1_000_000);
+                $remainingMicros = (int) (($lease['deadline'] - microtime(true)) * 1_000_000);
                 if ($remainingMicros <= $this->renewalSafetyMarginMicros()) {
-                    $this->signalLeaseLoss($parentPid);
+                    $this->handleLostLease($leases, $id, $parentPid);
+
+                    continue;
                 }
 
-                $nextDelayMicros = max(1, min(1_000_000, $remainingMicros - $this->renewalSafetyMarginMicros()));
+                $delaySeconds = max(1, min(1_000_000, $remainingMicros - $this->renewalSafetyMarginMicros())) / 1_000_000;
+                $retryInSeconds = $retryInSeconds === null ? $delaySeconds : min($retryInSeconds, $delaySeconds);
             } catch (Throwable) {
-                $this->signalLeaseLoss($parentPid);
+                $this->handleLostLease($leases, $id, $parentPid);
             }
+        }
+
+        return $retryInSeconds;
+    }
+
+    /**
+     * @param array<string, array{job: ClaimedJob, deadline: float, current: bool}> $leases
+     */
+    private function handleLostLease(array &$leases, string $jobId, int $parentPid): void
+    {
+        if ($leases[$jobId]['current']) {
+            $this->signalLeaseLoss($parentPid);
+        }
+
+        unset($leases[$jobId]);
+    }
+
+    /**
+     * Send one worker heartbeat from the renewal child.
+     *
+     * The call is bounded so it can never starve job lease renewal: it may use
+     * at most half of the time the running job's lease still has beyond the
+     * safety margin. Failures are ignored here (the next attempt follows
+     * shortly); a missed heartbeat is not a reason to abort the job.
+     *
+     * @param array<string, array{job: ClaimedJob, deadline: float, current: bool}> $leases
+     * @return float Seconds until the next attempt
+     */
+    private function sendWorkerHeartbeatFromChild(array $leases, ClientOptions $baseOptions, float $everySeconds): float
+    {
+        try {
+            $remainingSeconds = INF;
+            foreach ($leases as $lease) {
+                $remainingSeconds = min($remainingSeconds, $lease['deadline'] - microtime(true));
+            }
+
+            $budget = min($baseOptions->requestTimeout, ($remainingSeconds - $this->renewalSafetyMarginSeconds()) / 2);
+            if ($budget < self::MIN_WORKER_HEARTBEAT_BUDGET_SECONDS) {
+                // The lease is about to need renewing; let that go first.
+                return min($everySeconds, 0.25);
+            }
+
+            $workers = $this->createRenewalWorkersResource($this->renewalClientOptions($baseOptions, $budget));
+            $workers->heartbeat((string) $this->workerId, [
+                'currentJobs' => count($this->activeJobs),
+                'status' => 'healthy',
+            ]);
+
+            return $everySeconds;
+        } catch (Throwable) {
+            return min($everySeconds, self::WORKER_HEARTBEAT_RETRY_SECONDS);
         }
     }
 
     protected function createRenewalJobsResource(ClientOptions $options): JobsResource
     {
         return (new SpooledClient($options))->jobs;
+    }
+
+    protected function createRenewalWorkersResource(ClientOptions $options): WorkersResource
+    {
+        return (new SpooledClient($options))->workers;
     }
 
     private function buildRenewalClientOptions(ClientOptions $baseOptions, float $remainingSeconds): ClientOptions
@@ -670,6 +956,16 @@ class SpooledWorker
             throw new TimeoutError('Insufficient lease time remains for a safe renewal request.');
         }
 
+        return $this->renewalClientOptions($baseOptions, $requestBudget);
+    }
+
+    /**
+     * Options for a request made from the renewal child: no retries and no
+     * circuit breaker (the child's own loop decides when to try again, against
+     * the lease clock), and a timeout that fits the given time budget.
+     */
+    private function renewalClientOptions(ClientOptions $baseOptions, float $requestBudget): ClientOptions
+    {
         $requestTimeout = min($baseOptions->requestTimeout, $requestBudget);
 
         return $baseOptions->with([
@@ -839,28 +1135,103 @@ class SpooledWorker
             $this->lastWorkerHeartbeat = $now;
         } catch (Throwable $e) {
             $this->debug("Worker heartbeat failed: {$e->getMessage()}");
+            // The call already retried; do not hammer an unreachable API on every
+            // poll. Try again after a few seconds (sooner if the interval is shorter).
+            $this->lastWorkerHeartbeat = $now - $interval + min($interval, self::WORKER_HEARTBEAT_RETRY_SECONDS);
         }
     }
 
     /**
-     * Wait for active jobs to complete.
+     * Arm the timers that can abort the handler that is about to run: the job's
+     * own timeout, and (once stop() was called) the shutdown timeout.
+     *
+     * Both ride on one SIGALRM. The handler raised in the signal handler unwinds
+     * through whatever the user's code is doing, as the lease-loss signal
+     * already does. A handler blocked inside a native call (curl_exec without a
+     * timeout, a blocking socket read) only sees it once that call returns.
      */
-    private function waitForActiveJobs(): void
+    private function beginHandlerGuard(ClaimedJob $job): void
     {
-        if (count($this->activeJobs) === 0) {
+        $this->jobDeadline = $job->timeoutSeconds > 0 ? microtime(true) + $job->timeoutSeconds : null;
+        $this->previousAlarmHandler = pcntl_signal_get_handler(SIGALRM);
+        pcntl_signal(SIGALRM, function (): void {
+            $this->onHandlerAlarm();
+        });
+        $this->handlerRunning = true;
+        $this->rearmHandlerAlarm();
+    }
+
+    private function endHandlerGuard(): void
+    {
+        $this->handlerRunning = false;
+        $this->jobDeadline = null;
+        pcntl_alarm(0);
+
+        if ($this->previousAlarmHandler !== null) {
+            pcntl_signal(SIGALRM, $this->previousAlarmHandler);
+            $this->previousAlarmHandler = null;
+        }
+    }
+
+    /**
+     * (Re)schedule the alarm for the earliest deadline that applies. SIGALRM has
+     * whole-second resolution, so it may fire up to a second after the deadline.
+     */
+    private function rearmHandlerAlarm(): void
+    {
+        $deadlines = array_filter([$this->jobDeadline, $this->shutdownDeadline()], static fn (?float $d): bool => $d !== null);
+        if ($deadlines === []) {
+            pcntl_alarm(0);
+
             return;
         }
 
-        $this->debug('Waiting for ' . count($this->activeJobs) . ' active jobs to complete...');
+        pcntl_alarm(max(1, (int) ceil(min($deadlines) - microtime(true))));
+    }
 
-        $deadline = microtime(true) + ($this->config->shutdownTimeout / 1000);
+    private function shutdownDeadline(): ?float
+    {
+        return $this->stopRequestedAt === null
+            ? null
+            : $this->stopRequestedAt + $this->config->shutdownTimeout / 1000;
+    }
 
-        while (count($this->activeJobs) > 0 && microtime(true) < $deadline) {
-            $this->sleep(100);
+    /**
+     * SIGALRM handler: abort the running handler once a deadline has passed.
+     */
+    private function onHandlerAlarm(): void
+    {
+        if (!$this->handlerRunning) {
+            return;
         }
 
-        if (count($this->activeJobs) > 0) {
-            $this->logger->warning('Shutdown timeout reached with ' . count($this->activeJobs) . ' active jobs');
+        $now = microtime(true);
+        if ($this->jobDeadline !== null && $now >= $this->jobDeadline) {
+            $this->handlerRunning = false;
+
+            throw new JobTimeoutError('Job timeout exceeded');
+        }
+
+        $shutdownDeadline = $this->shutdownDeadline();
+        if ($shutdownDeadline !== null && $now >= $shutdownDeadline) {
+            $this->handlerRunning = false;
+
+            throw new ShutdownTimeoutError('Worker shutdown timeout');
+        }
+
+        // Woke before any deadline (second rounding, or a deadline that moved): wait for the rest.
+        $this->rearmHandlerAlarm();
+    }
+
+    /**
+     * Run pending signal handlers. Needed when the application registered
+     * pcntl_signal() handlers without enabling async signals: PHP then only runs
+     * them when asked.
+     */
+    private function dispatchSignals(): void
+    {
+        if (function_exists('pcntl_signal_dispatch')) {
+            pcntl_signal_dispatch();
         }
     }
 
@@ -889,6 +1260,9 @@ class SpooledWorker
         ]);
 
         $this->workerId = null;
+        if ($this->state !== WorkerState::ERROR) {
+            $this->state = WorkerState::STOPPED;
+        }
     }
 
     /**
@@ -920,12 +1294,20 @@ class SpooledWorker
     }
 
     /**
-     * Sleep for milliseconds.
+     * Sleep for milliseconds, in short slices so a stop request is noticed
+     * promptly and pending signal handlers get to run.
      */
     private function sleep(int $ms): void
     {
-        if ($ms > 0) {
-            usleep($ms * 1000);
+        $deadline = microtime(true) + $ms / 1000;
+
+        while (($remaining = $deadline - microtime(true)) > 0) {
+            usleep((int) min(self::IDLE_SLICE_MICROS, $remaining * 1_000_000));
+            $this->dispatchSignals();
+
+            if ($this->state !== WorkerState::RUNNING) {
+                return;
+            }
         }
     }
 }

@@ -17,6 +17,29 @@ use Throwable;
  */
 final class SseClient
 {
+    /**
+     * Seconds a single blocking read waits for bytes before the read loop gets
+     * control back. It must be above zero: a zero read timeout makes the stream
+     * return immediately when idle, so the loop spun at 100% CPU between events.
+     * The server sends a keep-alive comment every 15 s, so this is also the
+     * granularity at which stop() takes effect while the stream is quiet.
+     */
+    public const READ_TIMEOUT_SECONDS = 5.0;
+
+    /**
+     * Seconds without a single byte (events or keep-alive comments) after which
+     * the connection is treated as dead and re-established. A silently dropped
+     * TCP connection never reports EOF.
+     */
+    public const IDLE_TIMEOUT_SECONDS = 60.0;
+
+    /**
+     * A connection that lived this long (seconds) counts as healthy: only then
+     * is the reconnect backoff reset. Resetting on every successful connect
+     * meant a server that accepts and immediately closes was retried hot.
+     */
+    private const STABLE_CONNECTION_SECONDS = 30.0;
+
     private readonly GuzzleClient $guzzle;
 
     private readonly LoggerInterface $logger;
@@ -27,6 +50,14 @@ final class SseClient
 
     private readonly ?string $accessToken;
 
+    /**
+     * Returns the caller's current JWT, or null to fall back to the API key.
+     * Asked on every (re)connect so a refreshed token is picked up.
+     *
+     * @var callable(): ?string|null
+     */
+    private readonly mixed $tokenProvider;
+
     private bool $running = false;
 
     private int $reconnectDelay = 1000; // ms
@@ -34,6 +65,8 @@ final class SseClient
     private int $maxReconnectDelay = 30000; // ms
 
     private int $reconnectAttempts = 0;
+
+    private ?float $connectedAt = null;
 
     /** @var array<string, callable> */
     private array $eventHandlers = [];
@@ -47,17 +80,19 @@ final class SseClient
         ?string $accessToken = null,
         ?LoggerInterface $logger = null,
         ?GuzzleClient $httpClient = null,
+        ?callable $tokenProvider = null,
     ) {
         $this->baseUrl = rtrim($baseUrl, '/');
         $this->apiKey = $apiKey;
         $this->accessToken = $accessToken;
+        $this->tokenProvider = $tokenProvider;
         $this->logger = $logger ?? new NullLogger();
 
         // Injectable for tests and custom transports (proxies, TLS options).
         $this->guzzle = $httpClient ?? new GuzzleClient([
             'base_uri' => $this->baseUrl,
             RequestOptions::STREAM => true,
-            RequestOptions::READ_TIMEOUT => 0, // No read timeout for streaming
+            RequestOptions::READ_TIMEOUT => self::READ_TIMEOUT_SECONDS,
             RequestOptions::HEADERS => [
                 'Accept' => 'text/event-stream',
                 'Cache-Control' => 'no-cache',
@@ -121,19 +156,27 @@ final class SseClient
         $this->running = true;
 
         while ($this->running) {
+            $this->connectedAt = null;
+
             try {
                 $this->connect();
             } catch (Throwable $e) {
                 $this->logger->error('SSE connection error', ['error' => $e->getMessage()]);
-
-                // Check if stop() was called during connection attempt
-                // @phpstan-ignore-next-line Running flag can be changed by stop()
-                if ($this->running === false) {
-                    break;
-                }
-
-                $this->reconnect();
             }
+
+            // Check if stop() was called while connected
+            // @phpstan-ignore-next-line Running flag can be changed by stop()
+            if ($this->running === false) {
+                break;
+            }
+
+            // Reached after an error AND after the server closed the stream
+            // cleanly (it does so every 30 minutes). Both back off: a clean
+            // close used to loop straight back into connect() with no delay.
+            if ($this->connectedAt !== null && microtime(true) - $this->connectedAt >= self::STABLE_CONNECTION_SECONDS) {
+                $this->reconnectAttempts = 0;
+            }
+            $this->reconnect();
         }
     }
 
@@ -161,11 +204,16 @@ final class SseClient
         ]);
 
         $body = $response->getBody();
-        $this->reconnectAttempts = 0; // Reset on successful connection
+        $this->connectedAt = microtime(true);
+        // The backoff is reset in listen() once the connection proves stable,
+        // not here: a server that accepts and then closes straight away must
+        // keep backing off.
 
         $this->emit('connected', []);
 
         $buffer = '';
+        $partialLine = '';
+        $lastByteAt = microtime(true);
 
         // Read line by line. A fixed-size read ($body->read(1024)) on Guzzle's
         // streaming body waits until that many bytes arrive, so after the first
@@ -176,8 +224,30 @@ final class SseClient
             $line = Utils::readLine($body);
 
             if ($line === '') {
+                // The read timed out with nothing to read. Keep waiting, but
+                // give up on a connection that has gone completely silent.
+                if (microtime(true) - $lastByteAt >= self::IDLE_TIMEOUT_SECONDS) {
+                    $this->logger->warning('SSE stream idle, reconnecting');
+
+                    break;
+                }
+                // Back off a little so a stream that returns '' without
+                // blocking can never turn this loop into a busy spin.
+                usleep(10_000);
+
                 continue;
             }
+
+            $lastByteAt = microtime(true);
+
+            // A read timeout can cut a line in half; only act on whole lines.
+            $line = $partialLine . $line;
+            if (!str_ends_with($line, "\n")) {
+                $partialLine = $line;
+
+                continue;
+            }
+            $partialLine = '';
 
             // A blank line ends an event.
             if (rtrim($line, "\r\n") === '') {
@@ -357,7 +427,11 @@ final class SseClient
         $this->logger->info('Reconnecting in {delay}ms', ['delay' => $delay]);
         $this->emit('reconnecting', ['delay' => $delay, 'attempt' => $this->reconnectAttempts]);
 
-        usleep($delay * 1000);
+        // Sleep in slices so stop() does not have to wait out a 30 s backoff.
+        $deadline = microtime(true) + $delay / 1000;
+        while ($this->running && ($remaining = $deadline - microtime(true)) > 0) {
+            usleep((int) min(100_000, $remaining * 1_000_000));
+        }
     }
 
     /**
@@ -383,8 +457,16 @@ final class SseClient
 
         // Data-plane auth: the backend reads `Authorization: Bearer <token>`
         // (a JWT or a raw API key). It does NOT read X-API-Key for SSE.
-        if ($this->accessToken !== null && $this->accessToken !== '') {
-            $headers['Authorization'] = 'Bearer ' . $this->accessToken;
+        $accessToken = $this->accessToken;
+        if ($this->tokenProvider !== null) {
+            $provided = ($this->tokenProvider)();
+            if (is_string($provided) && $provided !== '') {
+                $accessToken = $provided;
+            }
+        }
+
+        if ($accessToken !== null && $accessToken !== '') {
+            $headers['Authorization'] = 'Bearer ' . $accessToken;
         } elseif ($this->apiKey !== null && $this->apiKey !== '') {
             $headers['Authorization'] = 'Bearer ' . $this->apiKey;
         }

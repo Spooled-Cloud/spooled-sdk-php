@@ -30,6 +30,35 @@ final class RateLimitError extends SpooledError
     }
 
     /**
+     * True when this 429 is a plan limit / quota rejection rather than a rate limit.
+     *
+     * Quota errors (`QUOTA_EXCEEDED`, body `{"error":"limit_exceeded",...}`) do not
+     * clear by waiting: retrying them only stalls the caller, and counting them
+     * against the circuit breaker would lock acks out because enqueues hit the cap.
+     * A 429 that carries `Retry-After` is a genuine rate limit, never a quota error
+     * unless the API said so with the code.
+     */
+    public function isQuotaExceeded(): bool
+    {
+        if ($this->errorCode === 'QUOTA_EXCEEDED') {
+            return true;
+        }
+
+        if ($this->retryAfter !== null || $this->rawBody === null || $this->rawBody === '') {
+            return false;
+        }
+
+        $body = json_decode($this->rawBody, true);
+        if (!is_array($body)) {
+            return false;
+        }
+
+        // Older plan-limit bodies had no `code`; they always named the resource and plan.
+        return ($body['error'] ?? null) === 'limit_exceeded'
+            || (isset($body['resource'], $body['limit'], $body['plan']));
+    }
+
+    /**
      * Get recommended wait time before retry.
      */
     public function getRetryAfterSeconds(): float

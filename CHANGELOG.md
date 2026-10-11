@@ -5,6 +5,108 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-10-10
+
+A behaviour release: the worker now drains on stop, keeps itself alive during
+long jobs, and enforces job timeouts; the HTTP client retries what it safely can;
+methods for routes the API does not have now fail loudly.
+
+### Changed (behaviour)
+
+- **`SpooledWorker::stop()` only requests the stop and returns at once.** It used
+  to mark the running job cancelled and wait for it from inside the signal
+  handler, which runs on top of that very handler, so the wait could never see the
+  job finish: the worker froze for `shutdownTimeout`, the job then finished its
+  side effects, and its `complete` was dropped, so the lease expired and the job
+  ran again. Now the running job finishes and is acknowledged (`complete`, or
+  `fail` if it threw), no further job is claimed, the worker deregisters last and
+  `start()` returns. A handler still running `shutdownTimeout` ms after `stop()`
+  is aborted and its job failed with `Worker shutdown timeout`.
+  `JobContext::isCancelled()` turns true once a stop is requested.
+- **Each poll claims one job, not `min(concurrency, 10)`.** Handlers run serially,
+  so the extra claimed jobs sat on leases that expired while earlier handlers ran;
+  their renewals then failed with `409 LEASE_EXPIRED` and aborted the handler
+  mid-run. `concurrency` is the advertised capacity only (see docs/workers.md).
+  Should a claim ever return several jobs, the renewal process keeps the waiting
+  ones alive.
+- **Worker acks and heartbeats are retried** (network errors, timeouts, 5xx;
+  bounded by `RetryConfig`): `jobs->complete()`, `fail()`, `heartbeat()` and
+  `workers->heartbeat()`. A `complete` whose first attempt landed is answered
+  `409 Job is already completed`.
+- **Network errors and timeouts are retried** for GET/PUT/DELETE. They never were:
+  the client wrapped them in `NetworkError`/`TimeoutError` (status 0) before the
+  retry handler looked, and only HTTP statuses were considered. `jobs->create()`
+  is retried only when an `idempotencyKey` is set, since a lost response would
+  otherwise create the job twice.
+- **`$client->realtime()` no longer replaces the REST bearer.** It exchanged the
+  API key for a 24 h JWT and set it on the shared HTTP client, so every REST call
+  returned 401 once that JWT expired, and SSE/WS reconnects kept sending it.
+  Realtime now owns its credentials: SSE sends the API key (or a JWT you set), the
+  WebSocket gets a JWT minted lazily and refreshed before expiry and on every
+  reconnect. `realtime()` makes no request until a transport connects. The
+  WebSocket client also no longer logs its URL (it carries the token).
+- `JobList::hasMore` compares the row count with the requested page size (default
+  50, clamped to 100). `GET /jobs` is a bare array, so it was `true` only for
+  exactly 100 rows.
+- A top-level empty request body is sent as `{}` (was `[]`), floats keep their
+  fraction (`1.0`), and a body that cannot be JSON-encoded throws
+  `InvalidArgumentException` immediately instead of surfacing as a network error.
+
+### Fixed
+
+- **The renewal process now sends the worker heartbeat.** A handler running over
+  two minutes got a healthy worker marked offline and its jobs released (or
+  dead-lettered at max retries) while the lease was being renewed.
+- **The job's `timeout_seconds` is enforced.** A handler past it is aborted
+  (`Spooled\Worker\JobTimeoutError`, an `Error` so `catch (\Exception)` cannot
+  swallow it), the job is failed with `Job timeout exceeded`, and `job:timeout`
+  is emitted. The renewal process stops extending the lease shortly after the
+  deadline.
+- **Failure text is always accepted.** `jobs->fail()` and the worker send
+  `Job failed` for an empty message and cut one longer than 2048 characters on a
+  character boundary (invalid UTF-8 is scrubbed). The API rejected both with a 400,
+  leaving the job `processing` until its lease expired and losing the error.
+- **Quota 429s (`QUOTA_EXCEEDED`) are not retried and do not trip the circuit
+  breaker** (`RateLimitError::isQuotaExceeded()`). They used to be retried with
+  long sleeps, and enough enqueue quota errors opened the breaker and blocked
+  `complete`/`fail`.
+- **DLQ `retry()`/`purge()`/`list()` and `bulkEnqueue()` map `queue` to
+  `queueName`**, as `create`/`list`/`claim` already did. The API ignores unknown
+  keys, so `dlq->purge(['queue' => 'x', 'confirm' => true])` purged the dead-letter
+  queue of EVERY queue. `bulkEnqueue([...jobs])` now takes the queue from the jobs
+  (all must name the same one) or throws, instead of always failing validation.
+- gRPC `fail()` retries by default (`retry` unset sent `false`, which dead-letters
+  on the first failure); only an explicit `retry => false` does that.
+- gRPC `enqueue()` parses an ISO-8601 `scheduledAt` string (it was cast with
+  `(int)`, scheduling 1970, so the job ran at once).
+- `SseClient` no longer spins at 100% CPU between events (the read timeout was 0),
+  waits for a connection to prove stable before resetting its reconnect backoff,
+  reconnects after 60 s of silence, and `stop()` interrupts a backoff sleep.
+- The worker polls in short slices and dispatches pending signals, so `stop()` from
+  a `pcntl_signal` handler is noticed without `pcntl_async_signals(true)`.
+- The lease renewal process runs in its own process group, so SIGTERM/SIGINT sent
+  to the whole worker group (Supervisor `stopasgroup`, Ctrl-C) no longer kills
+  lease renewal while the job drains.
+
+### Deprecated (now throw `Spooled\Errors\UnsupportedOperationError`)
+
+These called routes the API does not have and always failed with 404/405 (or 422).
+They keep their signature, are marked `@deprecated`, and throw before any request:
+
+- `auth->requestPasswordReset()`, `confirmPasswordReset()`, `changePassword()`
+- `organizations->inviteMember()`, `updateMemberRole()`, `clearWebhookToken()`
+- `admin->getConfig()`, `updateConfig()`, `runMaintenance()`
+- `ingest->github()`, `ingest->stripe()` (verify the signature yourself and forward
+  with `ingest->custom()`; `validateGitHubSignature()` etc. still work)
+
+README and docs examples for these were corrected.
+
+### Added
+
+- `Spooled\Errors\UnsupportedOperationError`, `Spooled\Worker\JobTimeoutError`,
+  `Spooled\Worker\ShutdownTimeoutError`, `RateLimitError::isQuotaExceeded()`,
+  the `job:timeout` worker event.
+
 ## [1.2.3] - 2026-09-26
 
 ### Fixed

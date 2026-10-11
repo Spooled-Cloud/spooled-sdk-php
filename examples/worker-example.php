@@ -36,23 +36,25 @@ $worker->on('started', function (array $data): void {
 });
 
 $worker->on('job:claimed', function (array $data): void {
-    echo "Job claimed: {$data['job']->id}\n";
+    echo "Job claimed: {$data['jobId']}\n";
 });
 
 $worker->on('job:completed', function (array $data): void {
-    echo "Job completed: {$data['job']->id}\n";
+    echo "Job completed: {$data['jobId']}\n";
 });
 
 $worker->on('job:failed', function (array $data): void {
-    echo "Job failed: {$data['job']->id} - {$data['error']}\n";
+    echo "Job failed: {$data['jobId']} - {$data['error']}\n";
 });
 
 $worker->on('stopped', function (array $data): void {
     echo "Worker stopped. Completed: {$data['completedJobs']}, Failed: {$data['failedJobs']}\n";
 });
 
-// Handle shutdown signals
+// Handle shutdown signals. stop() only requests the stop and returns, so it is
+// safe here: the running job finishes and is acknowledged, then start() returns.
 if (function_exists('pcntl_signal')) {
+    pcntl_async_signals(true);
     pcntl_signal(SIGTERM, fn () => $worker->stop());
     pcntl_signal(SIGINT, fn () => $worker->stop());
 }
@@ -67,10 +69,12 @@ $worker->process(function (JobContext $ctx): array {
     // Simulate work
     sleep(1);
 
-    // Check if we should stop
+    // A stop was requested: the job may still finish and its result is sent,
+    // but wrapping up early keeps it inside `shutdownTimeout`.
     if ($ctx->isShuttingDown()) {
-        echo "Shutdown requested, stopping early\n";
-        throw new \RuntimeException('Worker shutdown requested');
+        echo "Shutdown requested, finishing early\n";
+
+        return ['processedAt' => date('c'), 'partial' => true];
     }
 
     echo "Job {$ctx->jobId} processed successfully\n";

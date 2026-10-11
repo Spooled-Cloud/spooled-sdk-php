@@ -5,10 +5,10 @@ declare(strict_types=1);
 namespace Spooled\Grpc;
 
 use DateTime;
-use DateTimeInterface;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use RuntimeException;
+use Spooled\Util\Timestamp;
 use Throwable;
 
 /**
@@ -254,11 +254,7 @@ final class GrpcQueueResource
 
         if (isset($params['scheduledAt'])) {
             $timestamp = new \Google\Protobuf\Timestamp();
-            if ($params['scheduledAt'] instanceof DateTimeInterface) {
-                $timestamp->setSeconds($params['scheduledAt']->getTimestamp());
-            } else {
-                $timestamp->setSeconds((int) $params['scheduledAt']);
-            }
+            $timestamp->setSeconds(Timestamp::toUnixSeconds($params['scheduledAt']));
             $request->setScheduledAt($timestamp);
         }
 
@@ -447,9 +443,10 @@ final class GrpcQueueResource
             $request->setWorkerId((string) $params['workerId']);
         }
 
-        if (isset($params['retry'])) {
-            $request->setRetry((bool) $params['retry']);
-        }
+        // Retry by default (the server then honours max_retries). An unset
+        // proto3 bool is false, and `retry = false` sends the job straight to the
+        // dead-letter queue on its FIRST failure; only an explicit false does that.
+        $request->setRetry(!isset($params['retry']) || (bool) $params['retry']);
 
         // Lease fencing token from dequeue; when set, the failure succeeds only
         // if it matches the job's current lease.

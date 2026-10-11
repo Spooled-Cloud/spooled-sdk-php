@@ -1,10 +1,10 @@
 # Workers Guide
 
-This guide documents `SpooledWorker` in Spooled PHP SDK 1.2.0.
+This guide documents `SpooledWorker` in Spooled PHP SDK 1.3.0.
 
 ## Runtime Requirements
 
-`SpooledWorker::start()` requires `ext-pcntl` and `ext-posix` in a Unix-like CLI environment. The worker uses a short-lived forked child process to renew each claimed job's lease while the parent runs a blocking synchronous handler. REST, gRPC, realtime, and other resource clients do not require these extensions.
+`SpooledWorker::start()` requires `ext-pcntl` and `ext-posix` in a Unix-like CLI environment. The worker uses a short-lived forked child process to renew each claimed job's lease, and to keep the worker heartbeat going, while the parent runs a blocking synchronous handler. REST, gRPC, realtime, and other resource clients do not require these extensions.
 
 No event loop is required. If `pcntl_fork`, signal-mask functions, or `posix_kill` are unavailable, `start()` throws before registering the worker.
 
@@ -36,7 +36,7 @@ pcntl_async_signals(true);
 pcntl_signal(SIGTERM, fn () => $worker->stop());
 pcntl_signal(SIGINT, fn () => $worker->stop());
 
-$worker->start(); // Blocking until stop() or an unrecoverable error.
+$worker->start(); // Blocking until stop() has been requested and the running job is acknowledged.
 ```
 
 ## Worker Configuration
@@ -44,15 +44,15 @@ $worker->start(); // Blocking until stop() or an unrecoverable error.
 ```php
 $config = new WorkerConfig(
     queueName: 'emails',
-    concurrency: 5,
+    concurrency: 5,           // advertised capacity only: handlers run one at a time
     pollInterval: 1000,       // milliseconds
     leaseDuration: 60,        // seconds
     heartbeatFraction: 0.5,   // renew after 50% of the lease; must be > 0 and < 1
-    shutdownTimeout: 30000,   // milliseconds
-    heartbeatInterval: 15000, // worker-registration heartbeat, milliseconds
+    shutdownTimeout: 30000,   // milliseconds the running handler may take after stop()
+    heartbeatInterval: 15000, // worker heartbeat, milliseconds (also sent while a handler runs)
     hostname: gethostname() ?: 'php-worker',
     workerType: 'php',
-    // version defaults to Spooled\Version::VERSION (1.2.0)
+    // version defaults to Spooled\Version::VERSION (1.3.0)
     metadata: ['environment' => 'production'],
     workerId: 'emails-worker-01', // stable registration identity
 );
@@ -60,7 +60,7 @@ $config = new WorkerConfig(
 
 `WorkerConfig::fromArray()` is also supported for dynamic configuration. `queueName`/`queue` are accepted aliases.
 
-The current runtime executes its synchronous handler in the polling process, so claimed jobs are handled serially. `concurrency` controls advertised/claim capacity but does not create parallel handler execution. Run multiple worker processes for parallelism.
+The current runtime executes its synchronous handler in the polling process, so jobs are handled serially: each poll claims exactly one job. (Claiming `concurrency` jobs at once only parked the extra ones on a lease that expired while earlier handlers ran.) `concurrency` is the capacity advertised at registration; it does not create parallel handler execution. Run multiple worker processes for parallelism.
 
 ## Worker Identity
 
@@ -74,13 +74,20 @@ Derive the value from something that survives a restart - the hostname, the supe
 
 For every claimed job, the worker:
 
-1. Starts an isolated renewal child before invoking the handler.
-2. Renews after `leaseDuration * heartbeatFraction` using a fresh post-fork HTTP transport with retries disabled and a timeout bounded by the remaining lease.
-3. Includes the immutable `leaseId` from the claim on heartbeat, completion, and failure requests when the server supplied one.
-4. Stops and reaps the renewal child before settling the job, preventing renewal from racing completion/failure or touching a replacement lease.
-5. Cancels the active execution and emits `error` if the lease is terminally lost.
+1. Starts an isolated renewal child before invoking the handler. The child runs in its own process group, so a SIGTERM/SIGINT sent to the worker's whole group (Supervisor `stopasgroup`, Ctrl-C) does not stop renewal while the job drains.
+2. Renews after `leaseDuration * heartbeatFraction` using a fresh post-fork HTTP transport with retries disabled and a timeout bounded by the remaining lease. If a claim ever returns more than one job, the jobs waiting behind the running one are renewed too.
+3. Sends the worker heartbeat every `heartbeatInterval` from the same child. The scheduler marks a worker offline after two minutes without one and releases its jobs, so a long handler would otherwise get a healthy, busy worker declared dead. A heartbeat that cannot be sent never disturbs the job.
+4. Includes the immutable `leaseId` from the claim on heartbeat, completion, and failure requests when the server supplied one.
+5. Stops and reaps the renewal child before settling the job, preventing renewal from racing completion/failure or touching a replacement lease.
+6. Cancels the active execution and emits `error` if the lease is terminally lost.
 
 A stale fencing token is rejected by the server (`409 LEASE_EXPIRED`), so a worker must not cache or substitute lease IDs.
+
+## Timeouts
+
+A claimed job carries `timeout_seconds`. When a handler runs longer, the worker aborts it, emits `job:timeout`, and fails the job with `Job timeout exceeded` (a `timeout_seconds` of 0 means no deadline). The lease is not extended forever for a hung handler: the renewal child stops renewing shortly after the deadline.
+
+The abort is a `SIGALRM` that raises `Spooled\Worker\JobTimeoutError` inside your handler. It extends `Error`, not `Exception`, so a `catch (\Exception)` in the handler cannot swallow it; do not catch `\Throwable` without re-throwing. A handler blocked inside a single native call (`curl_exec` without `CURLOPT_TIMEOUT`, a blocking socket read) only sees the signal once that call returns, so give such calls their own timeouts. The worker reserves `SIGALRM` / `pcntl_alarm()` while a handler runs.
 
 ## Job Context
 
@@ -119,6 +126,7 @@ $worker->process(function (JobContext $ctx): array {
 | `job:started` | `jobId`, `queueName` |
 | `job:completed` | `jobId`, `queueName`, `result` |
 | `job:failed` | `jobId`, `queueName`, `error`, `willRetry` |
+| `job:timeout` | `jobId`, `queueName`, `timeoutSeconds` (followed by `job:failed` once the failure is recorded) |
 
 Success counters and `job:completed`/`job:failed` events advance only after the API confirms settlement. A rejected complete/fail request emits `error` instead of a false success event.
 
@@ -139,7 +147,14 @@ $unsubscribe();
 
 `start()` owns the polling loop and blocks. Signal handlers should call `stop()` directly; do not wrap `start()` in a second `isRunning()` loop (there is no `isRunning()` method).
 
-On stop, the worker stops polling, marks active work cancelled, waits up to `shutdownTimeout`, deregisters, and emits `stopped`. Handlers should check `JobContext::isCancelled()` at safe interruption points.
+`stop()` only records the request and returns at once, so it is safe inside a signal handler (PHP runs that handler on top of the handler that is executing, so it must not wait). Then:
+
+1. The worker stops claiming jobs. A job claimed just before the stop still runs; any further jobs of the same claim are left to their leases.
+2. The running handler finishes and its result is sent: `complete` if it returned, `fail` if it threw. A handler finishing during shutdown is never dropped.
+3. If the handler is still running `shutdownTimeout` milliseconds after `stop()`, it is aborted (`Spooled\Worker\ShutdownTimeoutError`) and the job is failed with `Worker shutdown timeout`.
+4. The worker deregisters last, emits `stopped`, and `start()` returns.
+
+Handlers can check `JobContext::isCancelled()` at safe points to wrap up early. Pick the orchestrator's grace period (`stop_grace_period`, `stopwaitsecs`, `terminationGracePeriodSeconds`) longer than `shutdownTimeout` plus the time to acknowledge the job.
 
 ## Parallelism and Deployment
 

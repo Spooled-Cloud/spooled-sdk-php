@@ -80,6 +80,51 @@ final class RealtimeAuthTest extends TestCase
         $this->assertSame('wss://api.spooled.cloud/api/v1/ws', $url);
     }
 
+    #[Test]
+    public function testWebSocketAsksTheTokenProviderOnEveryConnection(): void
+    {
+        $tokens = ['jwt-one', 'jwt-two'];
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            accessToken: 'stale-static-token',
+            tokenProvider: static function () use (&$tokens): string {
+                return array_shift($tokens) ?? 'jwt-last';
+            },
+        );
+
+        $this->assertSame('wss://api.spooled.cloud/api/v1/ws?token=jwt-one', $this->invokePrivate($client, 'buildUrl'));
+        $this->assertSame('wss://api.spooled.cloud/api/v1/ws?token=jwt-two', $this->invokePrivate($client, 'buildUrl'));
+    }
+
+    #[Test]
+    public function testWebSocketFallsBackToTheStaticTokenWhenTheProviderHasNone(): void
+    {
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            accessToken: 'jwt-token',
+            tokenProvider: static fn (): ?string => null,
+        );
+
+        $this->assertSame('wss://api.spooled.cloud/api/v1/ws?token=jwt-token', $this->invokePrivate($client, 'buildUrl'));
+    }
+
+    #[Test]
+    public function testSseTokenProviderWinsOverTheApiKeyAndIsReReadOnEveryConnection(): void
+    {
+        $current = 'jwt-one';
+        $client = new SseClient(
+            baseUrl: 'https://api.spooled.cloud',
+            apiKey: 'sp_secret',
+            tokenProvider: static function () use (&$current): string {
+                return $current;
+            },
+        );
+
+        $this->assertSame('Bearer jwt-one', $this->invokePrivate($client, 'buildHeaders')['Authorization']);
+        $current = 'jwt-two';
+        $this->assertSame('Bearer jwt-two', $this->invokePrivate($client, 'buildHeaders')['Authorization']);
+    }
+
     private function invokePrivate(object $object, string $method): mixed
     {
         $reflection = new ReflectionMethod($object, $method);

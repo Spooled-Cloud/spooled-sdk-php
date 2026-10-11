@@ -131,6 +131,10 @@ $client->jobs->complete('job_id', [
 ]);
 ```
 
+`complete`, `fail` and `heartbeat` are retried on network errors, timeouts and 5xx
+(bounded by the client's `RetryConfig`); they are fenced by the lease. A retry of a
+`complete` whose first attempt landed is answered with `409 Job is already completed`.
+
 ### Fail Job
 
 ```php
@@ -140,6 +144,10 @@ $client->jobs->fail('job_id', [
     'leaseId' => $claimedJob->leaseId, // fencing token from claim, when present
 ]);
 ```
+
+The API rejects an empty error or one over 2048 characters, so the SDK sends
+`Job failed` for an empty one and cuts a longer one to 2048 characters (never in
+the middle of a multi-byte character).
 
 ### Heartbeat
 
@@ -152,6 +160,9 @@ $client->jobs->heartbeat('job_id', [
 ```
 
 ### Dead Letter Queue
+
+`queue` is accepted as an alias of `queueName` everywhere below. Retry and purge
+act on every queue of the organization when no queue is named.
 
 ```php
 // List DLQ jobs
@@ -740,30 +751,40 @@ For receiving webhooks from external services.
 
 ### Custom Webhook
 
-```php
-$client->ingest->custom([
-    'queueName' => 'custom_events',
-    'eventType' => 'custom.event',
-    'payload' => ['data' => 'value'],
-]);
-```
-
-### GitHub Webhook
+`POST /webhooks/{org_id}/custom` is the only ingestion route. It creates a job and
+needs the organization's webhook token (`organizations->getWebhookToken()`).
 
 ```php
-$client->ingest->github(
+$result = $client->ingest->custom(
     $orgId,
-    $rawRequestBody,
-    $signatureHeader  // X-Hub-Signature-256
+    [
+        'queueName' => 'custom_events',
+        'eventType' => 'custom.event',
+        'payload' => ['data' => 'value'],
+    ],
+    ['webhookToken' => $webhookToken],
 );
+// $result->jobId, $result->queueName, $result->status
 ```
 
-### Stripe Webhook
+### GitHub and Stripe
 
-```php
-$client->ingest->stripe(
-    $orgId,
-    $rawRequestBody,
-    $signatureHeader  // Stripe-Signature
-);
-```
+The API has no `/webhooks/{org_id}/github` or `/stripe` route. `ingest->github()` and
+`ingest->stripe()` are deprecated and throw `Spooled\Errors\UnsupportedOperationError`
+without a network call. Verify the provider's signature in your own endpoint with
+`validateGitHubSignature()` / `validateStripeSignature()` and forward the event with
+`ingest->custom()`.
+
+## Methods the API does not support
+
+These methods are kept so existing code fails with an explanation instead of a 404.
+Each is deprecated and throws `Spooled\Errors\UnsupportedOperationError` (a
+`SpooledError` with `errorCode` `UNSUPPORTED_OPERATION`) before any request is made.
+
+| Method | Why |
+|---|---|
+| `auth->requestPasswordReset()`, `confirmPasswordReset()`, `changePassword()` | There is no password authentication |
+| `organizations->inviteMember()`, `updateMemberRole()` | Members are API keys; use `apiKeys->create()` / `update()` |
+| `organizations->clearWebhookToken()` | The route always answers 422; use `regenerateWebhookToken()` |
+| `admin->getConfig()`, `updateConfig()`, `runMaintenance()` | No such admin routes |
+| `ingest->github()`, `ingest->stripe()` | Removed server-side; use `ingest->custom()` |

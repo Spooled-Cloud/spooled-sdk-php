@@ -8,6 +8,7 @@ use GuzzleHttp\Client as GuzzleClient;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\RequestOptions;
+use InvalidArgumentException;
 use JsonException;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
@@ -18,6 +19,7 @@ use Spooled\Errors\TimeoutError;
 use Spooled\Util\Casing;
 use Spooled\Util\CircuitBreaker;
 use Spooled\Util\RetryHandler;
+use stdClass;
 use Throwable;
 
 /**
@@ -272,9 +274,13 @@ class HttpClient
         $url = $this->buildUrl($path, $skipApiPrefix);
         $allHeaders = $this->buildHeaders($headers);
 
-        // Convert request body keys to snake_case
+        // Convert request body keys to snake_case and encode once, up front. An
+        // unencodable body (invalid UTF-8, NaN, recursion) is a caller error;
+        // letting Guzzle encode it inside the retried callable surfaced it as a
+        // NetworkError("Unexpected error") that looked like a transport failure.
+        $encodedBody = null;
         if ($body !== null) {
-            $body = Casing::keysToSnakeCase($body);
+            $encodedBody = $this->encodeBody(Casing::keysToSnakeCase($body));
         }
 
         // Convert query keys to snake_case
@@ -282,9 +288,9 @@ class HttpClient
             $query = Casing::keysToSnakeCase($query);
         }
 
-        return $this->circuitBreaker->execute(function () use ($method, $url, $body, $query, $allHeaders, $forceRetry): array {
-            return $this->retryHandler->execute(function () use ($method, $url, $body, $query, $allHeaders): array {
-                return $this->executeRequest($method, $url, $body, $query, $allHeaders);
+        return $this->circuitBreaker->execute(function () use ($method, $url, $encodedBody, $query, $allHeaders, $forceRetry): array {
+            return $this->retryHandler->execute(function () use ($method, $url, $encodedBody, $query, $allHeaders): array {
+                return $this->executeRequest($method, $url, $encodedBody, $query, $allHeaders);
             }, $method, $forceRetry);
         });
     }
@@ -292,7 +298,7 @@ class HttpClient
     /**
      * Execute a single HTTP request.
      *
-     * @param array<string, mixed>|null $body
+     * @param string|null $body JSON-encoded request body
      * @param array<string, mixed> $query
      * @param array<string, string> $headers
      * @return array<string, mixed>
@@ -300,7 +306,7 @@ class HttpClient
     private function executeRequest(
         string $method,
         string $url,
-        ?array $body,
+        ?string $body,
         array $query,
         array $headers,
     ): array {
@@ -309,7 +315,7 @@ class HttpClient
         ];
 
         if ($body !== null) {
-            $options[RequestOptions::JSON] = $body;
+            $options[RequestOptions::BODY] = $body;
         }
 
         if ($query !== []) {
@@ -362,6 +368,28 @@ class HttpClient
             throw $e;
         } catch (Throwable $e) {
             throw new NetworkError('Unexpected error: ' . $e->getMessage(), $e);
+        }
+    }
+
+    /**
+     * JSON-encode a request body.
+     *
+     * A top-level empty array is an empty JSON object (every endpoint takes an
+     * object; `[]` was rejected), and floats keep their fraction (`1.0` stays
+     * `1.0`, not `1`).
+     *
+     * @param array<string, mixed> $body
+     * @throws InvalidArgumentException when the body cannot be encoded
+     */
+    private function encodeBody(array $body): string
+    {
+        try {
+            return json_encode(
+                $body === [] ? new stdClass() : $body,
+                JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION,
+            );
+        } catch (JsonException $e) {
+            throw new InvalidArgumentException('Request body cannot be JSON-encoded: ' . $e->getMessage(), 0, $e);
         }
     }
 

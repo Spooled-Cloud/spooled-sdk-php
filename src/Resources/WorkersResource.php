@@ -65,12 +65,14 @@ final class WorkersResource extends BaseResource
      * Send heartbeat for a worker.
      *
      * Backend returns an empty 200 body; there is no worker payload to decode.
+     * Idempotent, so network errors, timeouts and 5xx are retried (a missed
+     * heartbeat for 2 minutes gets the worker marked offline and its jobs released).
      *
      * @param array<string, mixed> $params Optional stats to include
      */
     public function heartbeat(string $workerId, array $params = []): void
     {
-        $this->httpClient->post("workers/{$workerId}/heartbeat", $params);
+        $this->httpClient->post("workers/{$workerId}/heartbeat", $params, forceRetry: true);
     }
 
     /**

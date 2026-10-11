@@ -259,9 +259,13 @@ final class SpooledClient
     /**
      * Lazily create unified realtime client (parity with Node/Python realtime helper).
      *
-     * If no access token is set but an API key is available, we will exchange API key for JWT.
-     * The exchanged JWT is cached on this client and reused across realtime() calls and
-     * reconnects until it nears expiry, so reconnect storms do not hammer POST /auth/login.
+     * The realtime transports own their credentials and never touch the REST
+     * client: SSE authenticates with the API key (or a JWT you set yourself),
+     * and the WebSocket, which accepts only a JWT, gets one minted by exchanging
+     * the API key. That JWT is cached privately, refreshed shortly before it
+     * expires, and re-checked on every reconnect. The REST bearer stays the API
+     * key, so a daemon that called realtime() does not start getting 401s when
+     * the short-lived JWT expires. No network call is made until a transport connects.
      */
     public function realtime(): SpooledRealtime
     {
@@ -269,49 +273,57 @@ final class SpooledClient
             return $this->realtimeClient;
         }
 
-        $accessToken = $this->resolveRealtimeAccessToken();
-
-        $options = $accessToken !== null && $accessToken !== ''
-            ? $this->options->with(['accessToken' => $accessToken])
-            : $this->options;
-
-        $this->realtimeClient = new SpooledRealtime($options, $this->logger);
+        $this->realtimeClient = new SpooledRealtime(
+            $this->options,
+            $this->logger,
+            wsTokenProvider: fn (): ?string => $this->resolveRealtimeAccessToken(),
+            accessTokenProvider: fn (): ?string => $this->callerAccessToken(),
+        );
 
         return $this->realtimeClient;
     }
 
     /**
-     * Determine the access token to use for the realtime data plane.
-     *
-     * Preference order:
-     *  1. An access token configured on the client is caller-owned and used verbatim.
-     *  2. A token already present on the HTTP client that we did not exchange ourselves
-     *     (e.g. set via setAccessToken()) is likewise treated as caller-owned.
-     *  3. Otherwise, if an API key is configured, exchange it for a (cached) JWT.
+     * The JWT the caller supplied, via ClientOptions or setAccessToken(), if any.
      */
-    private function resolveRealtimeAccessToken(): ?string
+    private function callerAccessToken(): ?string
     {
-        $options = $this->options;
-
-        if ($options->accessToken !== null && $options->accessToken !== '') {
-            return $options->accessToken;
+        $configured = $this->options->accessToken;
+        if ($configured !== null && $configured !== '') {
+            return $configured;
         }
 
         $current = $this->httpClient->getAccessToken();
-        if ($current !== null && $current !== '' && $current !== $this->cachedRealtimeToken) {
-            return $current;
+
+        return $current !== null && $current !== '' ? $current : null;
+    }
+
+    /**
+     * Determine the JWT to use for the realtime data plane.
+     *
+     * Preference order:
+     *  1. A JWT the caller supplied is caller-owned and used verbatim.
+     *  2. Otherwise, if an API key is configured, exchange it for a (cached) JWT.
+     */
+    private function resolveRealtimeAccessToken(): ?string
+    {
+        $caller = $this->callerAccessToken();
+        if ($caller !== null) {
+            return $caller;
         }
 
-        if ($options->apiKey !== null && $options->apiKey !== '') {
-            return $this->exchangeApiKeyForToken($options->apiKey);
+        $apiKey = $this->options->apiKey;
+        if ($apiKey !== null && $apiKey !== '') {
+            return $this->exchangeApiKeyForToken($apiKey);
         }
 
-        return $current;
+        return null;
     }
 
     /**
      * Exchange the API key for a realtime JWT, reusing the cached JWT until it
-     * approaches expiry.
+     * approaches expiry. The JWT is kept in this object only; it is never set on
+     * the REST client.
      *
      * The JWT `exp` claim is read by base64-decoding the payload segment without
      * verifying the signature; the token is considered expired
@@ -334,11 +346,8 @@ final class SpooledClient
         $this->cachedRealtimeTokenExpiresAt = $this->decodeJwtExpiry($tokens->accessToken)
             ?? ($tokens->expiresIn !== null ? time() + $tokens->expiresIn : null);
 
-        $this->setAccessToken($tokens->accessToken);
-        if ($tokens->refreshToken !== null && $tokens->refreshToken !== '') {
-            $this->setRefreshToken($tokens->refreshToken);
-        }
-
+        // Deliberately NOT stored on the HTTP client: that would replace the
+        // API key as the REST bearer with this short-lived JWT.
         return $tokens->accessToken;
     }
 

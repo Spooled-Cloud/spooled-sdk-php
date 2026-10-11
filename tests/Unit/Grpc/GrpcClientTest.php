@@ -265,6 +265,27 @@ final class GrpcClientTest extends TestCase
 
     #[RequiresPhpExtension('grpc')]
     #[RequiresPhpExtension('protobuf')]
+    public function testFailRetriesByDefaultAndOnlyAnExplicitFalseDeadLetters(): void
+    {
+        // An unset proto3 bool is false, and retry=false sends the job straight
+        // to the dead-letter queue on its first failure, ignoring max_retries.
+        $transport = new RecordingGrpcQueueClient();
+        $client = new SpooledGrpcClient(new GrpcOptions(address: 'localhost:50051', secure: false));
+        (new ReflectionClass(SpooledGrpcClient::class))->getProperty('queueClient')->setValue($client, $transport);
+        $queue = new GrpcQueueResource($client);
+
+        $queue->fail(['jobId' => 'job-1', 'workerId' => 'worker-1', 'error' => 'boom']);
+        $this->assertTrue($transport->requests['fail']->getRetry());
+
+        $queue->fail(['jobId' => 'job-1', 'workerId' => 'worker-1', 'error' => 'boom', 'retry' => false]);
+        $this->assertFalse($transport->requests['fail']->getRetry());
+
+        $queue->fail(['jobId' => 'job-1', 'workerId' => 'worker-1', 'error' => 'boom', 'retry' => true]);
+        $this->assertTrue($transport->requests['fail']->getRetry());
+    }
+
+    #[RequiresPhpExtension('grpc')]
+    #[RequiresPhpExtension('protobuf')]
     public function testWorkerRegisterSerializesTypeAndVersion(): void
     {
         $transport = new RecordingGrpcWorkerClient();

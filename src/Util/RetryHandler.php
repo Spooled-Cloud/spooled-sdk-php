@@ -4,10 +4,13 @@ declare(strict_types=1);
 
 namespace Spooled\Util;
 
+use GuzzleHttp\Exception\TransferException;
 use Psr\Log\LoggerInterface;
 use Spooled\Config\RetryConfig;
+use Spooled\Errors\NetworkError;
 use Spooled\Errors\RateLimitError;
 use Spooled\Errors\SpooledError;
+use Spooled\Errors\TimeoutError;
 use Throwable;
 
 /**
@@ -103,6 +106,23 @@ final class RetryHandler
      */
     public function isRetryableError(Throwable $error): bool
     {
+        // A plan limit does not clear by waiting; retrying only stalls the caller.
+        if ($error instanceof RateLimitError && $error->isQuotaExceeded()) {
+            return false;
+        }
+
+        // HttpClient wraps every Guzzle transport failure in NetworkError /
+        // TimeoutError (statusCode 0) before it reaches this handler, so the
+        // raw Guzzle checks below never see them. A NetworkError built from
+        // anything but a transport failure ("Unexpected error": an encoding
+        // or programming error) is not worth repeating.
+        if ($error instanceof TimeoutError) {
+            return true;
+        }
+        if ($error instanceof NetworkError) {
+            return $error->getPrevious() instanceof TransferException;
+        }
+
         // Network errors are retryable
         if ($error instanceof \GuzzleHttp\Exception\ConnectException) {
             return true;

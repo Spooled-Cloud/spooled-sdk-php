@@ -19,7 +19,7 @@ Official PHP SDK for [Spooled Cloud](https://spooled.cloud) - a modern job queue
 - **Type-safe** - Full PHP 8.2+ type hints and readonly DTOs
 - **PSR-compliant** - Works with any PSR-compatible HTTP client and logger
 - **Framework agnostic** - Use with Laravel, Symfony, or vanilla PHP
-- **Webhook ingestion** - Validate and process GitHub, Stripe, and custom webhooks
+- **Webhook ingestion** - Ingest custom webhooks into jobs; verify GitHub and Stripe signatures
 - **Dead Letter Queue (DLQ)** - Manage and retry failed jobs
 - **Billing integration** - Stripe-powered subscription management
 - **Automatic case conversion** - Between camelCase (PHP) and snake_case (API)
@@ -152,11 +152,18 @@ $client->jobs->cancel($job->id);
 // Boost priority
 $client->jobs->boostPriority($job->id, 10);
 
-// Bulk enqueue
+// Bulk enqueue (one queue per batch: pass it once, or name the same queue on every job)
 $result = $client->jobs->bulkEnqueue([
-    ['queue' => 'my-queue', 'payload' => ['item' => 1]],
-    ['queue' => 'my-queue', 'payload' => ['item' => 2]],
+    'queue' => 'my-queue',
+    'jobs' => [
+        ['payload' => ['item' => 1]],
+        ['payload' => ['item' => 2]],
+    ],
 ]);
+
+// Paginate: GET /jobs returns plain rows, so hasMore means "this page was full"
+$page = $client->jobs->list(['queue' => 'my-queue', 'limit' => 50]);
+$page->hasMore;
 ```
 
 ### Workers
@@ -180,7 +187,8 @@ $client = new SpooledClient(
 
 $worker = new SpooledWorker($client, [
     'queueName' => 'my-queue',
-    'concurrency' => 10,
+    // Handlers run one at a time in this process (one job claimed per poll);
+    // run several worker processes for parallelism.
     // Optional, but recommended: a stable id (1-128 chars, [A-Za-z0-9._-])
     // makes registration an upsert, so restarts reuse this worker's row
     // instead of leaving the old one against the plan worker cap.
@@ -193,22 +201,32 @@ $worker->process(function (JobContext $ctx): array {
     // Access payload
     $data = $ctx->get('data');
     
-    // Check if shutting down
+    // A stop was requested: the job may still finish (its result is sent),
+    // but wrapping up early keeps it inside `shutdownTimeout`.
     if ($ctx->isShuttingDown()) {
-        throw new \RuntimeException('Worker shutting down');
+        return ['partial' => true];
     }
     
     // Return result (job completed on success)
     return ['success' => true];
 });
 
-// Handle shutdown gracefully
+// Graceful shutdown: stop() only requests it and returns immediately, so it is
+// safe in a signal handler. The running job finishes and is acknowledged, then
+// the worker deregisters and start() returns.
+pcntl_async_signals(true);
 pcntl_signal(SIGTERM, fn() => $worker->stop());
 pcntl_signal(SIGINT, fn() => $worker->stop());
 
 // Start processing (blocking)
 $worker->start();
 ```
+
+While a handler runs, the worker's renewal process also keeps the job lease and
+the worker heartbeat alive, enforces the job's `timeout_seconds` (the handler is
+aborted and the job failed with `Job timeout exceeded`), and, after `stop()`,
+aborts a handler still running after `shutdownTimeout` (job failed with `Worker
+shutdown timeout`). See [docs/workers.md](docs/workers.md).
 
 ### Workflows (DAGs)
 
@@ -283,7 +301,10 @@ $client = new SpooledClient(new ClientOptions(
     apiKey: 'sp_live_your_api_key',
 ));
 
-// Get unified realtime client (auto-selects best transport)
+// Get unified realtime client (auto-selects best transport). It has its own
+// credentials: SSE sends the API key, the WebSocket (JWT only) gets a JWT that
+// is exchanged lazily and refreshed before it expires. REST calls keep using
+// the API key either way.
 $realtime = $client->realtime();
 
 // Check available transport
@@ -354,10 +375,11 @@ echo $result['available'] ? 'Available' : 'Taken';
 // List organizations
 $orgs = $client->organizations->list();
 
-// Webhook token management
+// Webhook token management (the token authenticates incoming custom webhooks)
 $token = $client->organizations->getWebhookToken();
 $client->organizations->regenerateWebhookToken();
-$client->organizations->clearWebhookToken();
+// There is no way to clear a token: clearWebhookToken() is deprecated and throws
+// UnsupportedOperationError without a network call. Rotate it instead.
 ```
 
 ### Webhooks
@@ -434,7 +456,8 @@ $result = $client->jobs->dlq->retry([
     'jobIds' => ['job-1', 'job-2'],
 ]);
 
-// Retry jobs by queue
+// Retry jobs by queue ('queue' and 'queueName' are the same filter; without
+// one, the operation applies to EVERY queue of the organization)
 $result = $client->jobs->dlq->retry([
     'queue' => 'my-queue',
     'limit' => 50,
@@ -497,37 +520,31 @@ $portal = $client->billing->createPortal([
 
 ### Webhook Ingestion
 
-Validate and process incoming webhooks from GitHub, Stripe, or custom sources:
+The API ingests one kind of webhook: `POST /webhooks/{org_id}/custom`, which
+creates a job and must carry the organization's webhook token. GitHub and Stripe
+events are not ingested directly: verify their signature in your own endpoint
+(see the helpers below) and forward the event as a custom webhook.
 
 ```php
 <?php
 
 // Ingest custom webhook (creates a job)
-$result = $client->ingest->custom($orgId, [
-    'queueName' => 'webhooks',
-    'eventType' => 'user.created',
-    'payload' => ['userId' => '123', 'email' => 'user@example.com'],
-]);
-
-echo "Created job: {$result['jobId']}\n";
-
-// Ingest GitHub webhook (with raw body for signature)
-$result = $client->ingest->github(
-    orgId: $orgId,
-    body: file_get_contents('php://input'),
-    githubEvent: $_SERVER['HTTP_X_GITHUB_EVENT'] ?? 'push',
-    signature: $_SERVER['HTTP_X_HUB_SIGNATURE_256'] ?? null,
-    secret: 'your-github-secret',  // SDK computes signature if not provided
+$result = $client->ingest->custom(
+    $orgId,
+    [
+        'queueName' => 'webhooks',
+        'eventType' => 'user.created',
+        'payload' => ['userId' => '123', 'email' => 'user@example.com'],
+    ],
+    ['webhookToken' => $webhookToken],  // from organizations->getWebhookToken()
 );
 
-// Ingest Stripe webhook
-$result = $client->ingest->stripe(
-    orgId: $orgId,
-    body: file_get_contents('php://input'),
-    signature: $_SERVER['HTTP_STRIPE_SIGNATURE'] ?? null,
-    secret: 'whsec_...',
-);
+echo "Created job: {$result->jobId}\n";
 ```
+
+`ingest->github()` and `ingest->stripe()` are deprecated: the API has no such
+routes (they always 404'd), so they now throw `UnsupportedOperationError`
+without a network call.
 
 #### Signature Validation Helpers
 
@@ -743,9 +760,24 @@ try {
 }
 ```
 
+A quota 429 does not clear by waiting, so the client does not retry it (`$e->isQuotaExceeded()`
+tells the two apart) and it never counts toward the circuit breaker; a worker's
+`complete`/`fail` calls keep working while enqueues hit the cap.
+
+## Retries
+
+Idempotent requests (GET, PUT, DELETE) are retried on network errors, timeouts,
+408, 429 (with `Retry-After`) and 5xx, up to `RetryConfig::$maxRetries`. A plain
+POST is not retried, because a lost response would run it twice: that is why
+`jobs->create()` is only retried when you pass an `idempotencyKey`. Worker acks
+(`jobs->complete()`, `jobs->fail()`, `jobs->heartbeat()`, `workers->heartbeat()`)
+are retried too: they are fenced by the lease. If the first attempt of a
+`complete` actually landed, the retry is answered with `409 Job is already completed`
+(a `ConflictError`).
+
 ## Version Source
 
-Release `1.2.0` is defined once in `Spooled\Version::VERSION`. The default HTTP `User-Agent` and default `SpooledWorker` registration version derive from that constant. Application metadata may override the worker version explicitly.
+Release `1.3.0` is defined once in `Spooled\Version::VERSION`. The default HTTP `User-Agent` and default `SpooledWorker` registration version derive from that constant. Application metadata may override the worker version explicitly.
 
 ## Development
 

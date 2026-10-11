@@ -6,7 +6,13 @@
 - `webhooks->update()` `secret` is three-state and null is destructive: omit = keep, `null` = clear (deliveries unsigned), string = replace. Do not "simplify" null back into no-op — that reinstates the un-removable-secret bug.
 - `Webhook::$failureCount` maps `failure_count` (consecutive failed **deliveries**, not attempts; 20 -> auto-disable, `$lastStatus === 'auto_disabled'`). `$secret` is always null (backend `skip_serializing`) and `$deliveryCount`/`$maxRetries`/`$timeout`/`$headers` have no REST counterpart.
 - Typed `CreateJobParams`: `queue`/`scheduledFor`, default maxRetries 3, **no timeoutSeconds**; `toArray` may emit `scheduledFor` vs API `scheduledAt` — verify mapping in JobsResource.
-- Worker progress/log emits local job logs only; Go remains the SDK with backend-persisted `POST /jobs/{id}/progress`. Lease renew needs pcntl/posix.
+- Worker progress/log emits local job logs only (the backend has no progress route). Lease renew needs pcntl/posix.
+- Methods for routes the backend does not have are kept but `@deprecated` and throw `Errors\UnsupportedOperationError` (`UNSUPPORTED_OPERATION`, no network call): `auth->requestPasswordReset/confirmPasswordReset/changePassword`, `organizations->inviteMember/updateMemberRole/clearWebhookToken` (route exists, handler always 422), `admin->getConfig/updateConfig/runMaintenance`, `ingest->github/stripe`. Do not point them at a route again unless the backend grows one.
+- `POST /jobs/{id}/fail` accepts 1-2048 characters. `Util\FailureText::coerce` (called by `jobs->fail()` and the worker) sends `Job failed` for empty text and cuts longer text on a character boundary.
+- `POST /jobs/{id}/complete` repeated after it landed answers `409 Job is already completed`; acks are retried, so a retried complete can surface that.
+- `GET /jobs` and `GET /jobs/dlq` return a bare array; limit defaults to 50 and is clamped to 1..100. `JobList::hasMore` is "this page was full".
+- DLQ retry/purge and bulk enqueue bodies accept only `queue_name`; unknown keys are ignored, so an unmapped `queue` widens the operation to every queue. Keep the `queue` → `queueName` mapping in `DlqOperations` and `bulkEnqueue`.
+- Quota 429s carry `code: QUOTA_EXCEEDED` (older bodies: `error: limit_exceeded` and no `Retry-After`).
 - Workflow job list/get/status are not their own REST routes. `GET /workflows/{id}` carries jobs + dependencies; `workflows->jobs->list()` reads that document. `POST /jobs/{id}/dependencies` takes `depends_on` + `dependency_mode` and returns `dependencies_added` / `dependencies_met`.
 - `POST /workflows` job definitions require `key` and `queue_name` (plus `depends_on`). Documented PHP `queue` is mapped to `queueName` before the HTTP client snake-cases it.
 - `POST /workflows` returns `{ workflow_id, job_ids, status }`, not a full `Workflow`. PHP `create()` backfills `name`/`totalJobs` from the request.

@@ -1,6 +1,6 @@
 # Configuration Guide
 
-This guide documents the configuration surface in Spooled PHP SDK 1.2.0.
+This guide documents the configuration surface in Spooled PHP SDK 1.3.0.
 
 ## Client Configuration
 
@@ -48,7 +48,7 @@ $client = new SpooledClient(new ClientOptions(
 ));
 ```
 
-The default `User-Agent` is `spooled-php/1.2.0`, derived from `Spooled\Version::VERSION`.
+The default `User-Agent` is `spooled-php/1.3.0`, derived from `Spooled\Version::VERSION`.
 
 ## Environment Variables
 
@@ -76,7 +76,7 @@ jittered = base + uniform(-1, 1) * base * jitter
 delay = min(max(jittered, 0), maxDelay)
 ```
 
-With the default `jitter: 0.1`, an unclamped 2-second base delay becomes 1.8–2.2 seconds. `Retry-After` takes precedence and is capped at `maxDelay` without random jitter. Network failures, timeouts, HTTP 429, and HTTP 5xx responses are retryable. Non-idempotent POST requests are retried only when the request is safe to repeat, such as when an idempotency key is supplied.
+With the default `jitter: 0.1`, an unclamped 2-second base delay becomes 1.8–2.2 seconds. `Retry-After` takes precedence and is capped at `maxDelay` without random jitter. Network failures, timeouts, HTTP 408, HTTP 429, and HTTP 5xx responses are retryable. Non-idempotent POST requests are retried only when the request is safe to repeat: `jobs->create()` with an `idempotencyKey`, and the lease-fenced worker calls `jobs->complete()`, `fail()`, `heartbeat()` and `workers->heartbeat()`. A quota 429 (`errorCode` `QUOTA_EXCEEDED`, a plan limit) is never retried: waiting does not clear it.
 
 Disable retries explicitly when needed:
 
@@ -89,7 +89,7 @@ $options = new ClientOptions(
 
 ## Circuit Breaker
 
-The circuit breaker counts transient failures (HTTP 429, HTTP 5xx, network errors, and timeouts), not ordinary HTTP 4xx responses.
+The circuit breaker counts transient failures (HTTP 429, HTTP 5xx, network errors, and timeouts), not ordinary HTTP 4xx responses. A quota 429 (`QUOTA_EXCEEDED`) is the account hitting its plan limit, not a failing service, so it is not counted: enqueue quota errors cannot lock out `complete`/`fail`.
 
 ```php
 $options = new ClientOptions(
@@ -203,3 +203,7 @@ $client->close();
 ```
 
 Closing releases lazily created realtime and gRPC resources.
+
+## Realtime Credentials
+
+`$client->realtime()` does not change the REST client's credentials. SSE authenticates with the API key (or a JWT you set with `setAccessToken()` / `ClientOptions::$accessToken`). The WebSocket endpoint accepts only a JWT, so the client exchanges the API key for one lazily (no request is made until a transport connects), keeps it in the realtime client only, and mints a new one shortly before it expires and on every reconnect. REST requests keep using the API key.
