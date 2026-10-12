@@ -313,14 +313,18 @@ final readonly class JobList
     /**
      * Create from API response.
      *
-     * `GET /jobs` returns a bare array with no `limit`, `total` or `hasMore`, so
-     * a full page can only be told from the last one by comparing the row count
-     * with the page size that was requested.
+     * `GET /jobs` and `GET /jobs/dlq` return a bare array and say in the
+     * `X-Has-More` response header whether another page follows. That header
+     * decides `hasMore` when it is given. Without it (an older server) a full
+     * page can only be told from the last one by comparing the row count with
+     * the page size that was requested, which reports one extra page when the
+     * last page happens to be exactly full.
      *
      * @param array<string, mixed> $data
      * @param int|null $requestedLimit The `limit` the list request sent, if any
+     * @param bool|null $hasMoreHeader The `X-Has-More` header, when the response carried it
      */
-    public static function fromArray(array $data, ?int $requestedLimit = null): self
+    public static function fromArray(array $data, ?int $requestedLimit = null, ?bool $hasMoreHeader = null): self
     {
         // Handle both wrapped and raw array responses
         // Wrapped: { "jobs": [...], "total": 10, ... }
@@ -343,7 +347,8 @@ final readonly class JobList
             total: (int) ($data['total'] ?? $data['totalJobs'] ?? count($jobs)),
             page: (int) ($data['page'] ?? 1),
             pageSize: $pageSize,
-            hasMore: (bool) ($data['hasMore'] ?? (count($jobs) > 0 && count($jobs) >= max(1, $pageSize))),
+            hasMore: $hasMoreHeader
+                ?? (bool) ($data['hasMore'] ?? (count($jobs) > 0 && count($jobs) >= max(1, $pageSize))),
         );
     }
 }

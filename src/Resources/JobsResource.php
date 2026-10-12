@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Spooled\Resources;
 
+use DateTimeInterface;
 use InvalidArgumentException;
 use Spooled\Http\HttpClient;
 use Spooled\Types\BatchStatusResponse;
@@ -11,9 +12,12 @@ use Spooled\Types\BulkEnqueueResponse;
 use Spooled\Types\ClaimJobsResult;
 use Spooled\Types\CreateJobResult;
 use Spooled\Types\Job;
+use Spooled\Types\JobHistoryList;
 use Spooled\Types\JobList;
 use Spooled\Types\JobStats;
+use Spooled\Types\JobStatus;
 use Spooled\Util\FailureText;
+use Spooled\Util\ListQuery;
 
 /**
  * DLQ (Dead Letter Queue) operations interface.
@@ -27,14 +31,21 @@ final class DlqOperations
     /**
      * List jobs in dead-letter queue.
      *
+     * Takes the same filters as {@see JobsResource::list()} except `status`.
+     * `hasMore` comes from the API's `X-Has-More` header.
+     *
      * @param array<string, mixed> $params
      */
     public function list(array $params = []): JobList
     {
-        $params = self::mapQueueAlias($params);
+        $params = ListQuery::normalize(self::mapQueueAlias($params));
         $response = $this->httpClient->get('jobs/dlq', $params);
 
-        return JobList::fromArray($response, self::requestedLimit($params));
+        return JobList::fromArray(
+            $response,
+            self::requestedLimit($params),
+            ListQuery::hasMore($this->httpClient->getLastResponseHeader('X-Has-More')),
+        );
     }
 
     /**
@@ -154,7 +165,35 @@ final class JobsResource extends BaseResource
     /**
      * List jobs.
      *
-     * @param array<string, mixed> $params
+     * Filters (all optional, combined with AND):
+     *
+     * - `queue` / `queueName`: one queue
+     * - `status`: one status (`'failed'`), a comma list (`'failed,deadletter'`),
+     *   or a list of strings / `JobStatus` cases (`['failed', 'deadletter']`)
+     * - `q`: search text, case-insensitive; matches a job whose id starts with it
+     *   or whose queue name or `payload.job_type` contains it
+     * - `jobType`: exact `payload.job_type`
+     * - `createdAfter` / `createdBefore`: RFC 3339 string or `DateTimeInterface`
+     *   (created at or after / before that instant); anything else is a 400
+     * - `tag`: one tag
+     * - `limit` (1-100, default 50), `offset`, `orderBy`, `orderDir`
+     *
+     * `hasMore` on the result comes from the API's `X-Has-More` header.
+     *
+     * @param array{
+     *     queue?: string,
+     *     queueName?: string,
+     *     status?: string|JobStatus|array<string|JobStatus>,
+     *     q?: string,
+     *     jobType?: string,
+     *     createdAfter?: string|DateTimeInterface,
+     *     createdBefore?: string|DateTimeInterface,
+     *     tag?: string,
+     *     limit?: int,
+     *     offset?: int,
+     *     orderBy?: string,
+     *     orderDir?: string
+     * }|array<string, mixed> $params
      */
     public function list(array $params = []): JobList
     {
@@ -164,11 +203,37 @@ final class JobsResource extends BaseResource
             unset($params['queue']);
         }
 
+        $params = ListQuery::normalize($params);
         $response = $this->httpClient->get('jobs', $params);
 
-        // GET /jobs is a bare array with no limit or total; remember what we
-        // asked for so JobList can tell a full page from the last one.
-        return JobList::fromArray($response, isset($params['limit']) ? (int) $params['limit'] : null);
+        // GET /jobs is a bare array; the X-Has-More header says whether another
+        // page follows. The requested limit is the fallback for older servers.
+        return JobList::fromArray(
+            $response,
+            isset($params['limit']) ? (int) $params['limit'] : null,
+            ListQuery::hasMore($this->httpClient->getLastResponseHeader('X-Has-More')),
+        );
+    }
+
+    /**
+     * A job's recorded lifecycle events (`GET /jobs/{id}/history`).
+     *
+     * Params: `order` (`'asc'`, the default: oldest first; or `'desc'`),
+     * `limit` (1-500, default 100) and `offset`. `hasMore` comes from the
+     * API's `X-Has-More` header. A job of another organization, or one in a
+     * queue outside the API key's scope, is a NotFoundError.
+     *
+     * @param array{order?: 'asc'|'desc', orderDir?: 'asc'|'desc', limit?: int, offset?: int}|array<string, mixed> $params
+     */
+    public function history(string $jobId, array $params = []): JobHistoryList
+    {
+        $response = $this->httpClient->get("jobs/{$jobId}/history", $params);
+
+        return JobHistoryList::fromArray(
+            $response,
+            isset($params['limit']) ? (int) $params['limit'] : null,
+            ListQuery::hasMore($this->httpClient->getLastResponseHeader('X-Has-More')),
+        );
     }
 
     /**
@@ -312,7 +377,10 @@ final class JobsResource extends BaseResource
      * If the first attempt actually landed, the retry is answered with
      * 409 "already completed" (a ConflictError).
      *
-     * @param array<string, mixed> $params {workerId, result?, leaseId?}
+     * `leaseId` is required: pass the `leaseId` of the claimed job. The API
+     * answers 422 (ValidationError) without it.
+     *
+     * @param array<string, mixed> $params {workerId, leaseId, result?}
      * @return array{success: bool}
      */
     public function complete(string $jobId, array $params): array
@@ -327,7 +395,10 @@ final class JobsResource extends BaseResource
      * 2048 characters); an empty or over-long message is rejected with a 400,
      * which left the job `processing` until its lease expired.
      *
-     * @param array<string, mixed> $params {workerId, error, leaseId?}
+     * `leaseId` is required: pass the `leaseId` of the claimed job. The API
+     * answers 422 (ValidationError) without it.
+     *
+     * @param array<string, mixed> $params {workerId, leaseId, error}
      * @return array{success: bool, error?: string}
      */
     public function fail(string $jobId, array $params): array
@@ -340,7 +411,10 @@ final class JobsResource extends BaseResource
     /**
      * Extend job lease (heartbeat). Idempotent, so it is retried like {@see self::complete()}.
      *
-     * @param array<string, mixed> $params {workerId, leaseDurationSecs, leaseId?}
+     * `leaseId` is required: pass the `leaseId` of the claimed job. The API
+     * answers 422 (ValidationError) without it.
+     *
+     * @param array<string, mixed> $params {workerId, leaseId, leaseDurationSecs?}
      * @return array{success: bool}
      */
     public function heartbeat(string $jobId, array $params): array
