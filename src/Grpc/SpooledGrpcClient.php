@@ -95,6 +95,12 @@ final class SpooledGrpcClient
      */
     public function getQueueClient(): mixed
     {
+        // A client that already exists (created below, or injected by a test
+        // transport) is reused as is; only creating one needs the extensions.
+        if ($this->queueClient !== null) {
+            return $this->queueClient;
+        }
+
         $this->ensureAvailable();
 
         if ($this->queueClient === null) {
@@ -126,6 +132,10 @@ final class SpooledGrpcClient
      */
     public function getWorkerClient(): mixed
     {
+        if ($this->workerClient !== null) {
+            return $this->workerClient;
+        }
+
         $this->ensureAvailable();
 
         if ($this->workerClient === null) {
@@ -213,6 +223,11 @@ final class GrpcQueueResource
     /**
      * Enqueue a job via gRPC.
      *
+     * The payload travels as a `google.protobuf.Struct`, so it must be a JSON
+     * object (a list or scalar payload does not arrive as sent) and integers
+     * beyond 2^53 lose precision. Use REST (`$client->jobs->create()`) for such
+     * payloads; REST keeps them exactly.
+     *
      * @param array<string, mixed> $params
      * @return array<string, mixed>
      */
@@ -222,7 +237,7 @@ final class GrpcQueueResource
         $metadata = $this->client->getMetadata();
 
         $request = new \Spooled\V1\EnqueueRequest();
-        $request->setQueueName($params['queueName'] ?? $params['queue'] ?? 'default');
+        $request->setQueueName((string) ($params['queueName'] ?? $params['queue'] ?? 'default'));
 
         // Set payload as JSON string
         $payload = $params['payload'] ?? [];
@@ -274,6 +289,10 @@ final class GrpcQueueResource
     /**
      * Dequeue a job via gRPC.
      *
+     * Params: `queueName` (or `queue`), `workerId`, `batchSize` and
+     * `leaseDurationSecs` (omitted: the server's 300 s lease). Each returned job
+     * carries the `leaseId` that complete/fail/renewLease must send back.
+     *
      * @param array<string, mixed> $params
      * @return array<string, mixed>|null
      */
@@ -283,7 +302,7 @@ final class GrpcQueueResource
         $metadata = $this->client->getMetadata();
 
         $request = new \Spooled\V1\DequeueRequest();
-        $request->setQueueName($params['queueName'] ?? $params['queue'] ?? 'default');
+        $request->setQueueName((string) ($params['queueName'] ?? $params['queue'] ?? 'default'));
 
         if (isset($params['workerId'])) {
             $request->setWorkerId((string) $params['workerId']);
@@ -386,6 +405,11 @@ final class GrpcQueueResource
     /**
      * Complete a job via gRPC.
      *
+     * Params: `jobId`, `workerId`, `leaseId` (required by the server: the
+     * `leaseId` the dequeue returned; without it the call is INVALID_ARGUMENT)
+     * and `result`. `result` travels as a `google.protobuf.Struct`: a JSON
+     * object only, and integers beyond 2^53 lose precision (REST keeps them).
+     *
      * @param array<string, mixed> $params
      * @return array<string, mixed>
      */
@@ -395,7 +419,7 @@ final class GrpcQueueResource
         $metadata = $this->client->getMetadata();
 
         $request = new \Spooled\V1\CompleteRequest();
-        $request->setJobId($params['jobId']);
+        $request->setJobId((string) $params['jobId']);
 
         if (isset($params['workerId'])) {
             $request->setWorkerId((string) $params['workerId']);
@@ -427,6 +451,11 @@ final class GrpcQueueResource
     /**
      * Fail a job via gRPC.
      *
+     * Params: `jobId`, `workerId`, `leaseId` (required by the server: the
+     * `leaseId` the dequeue returned; without it the call is INVALID_ARGUMENT),
+     * `error`, and `retry`. `retry` omitted or true retries the job according to
+     * its `max_retries`; `retry => false` moves it to the dead-letter queue now.
+     *
      * @param array<string, mixed> $params
      * @return array<string, mixed>
      */
@@ -436,16 +465,17 @@ final class GrpcQueueResource
         $metadata = $this->client->getMetadata();
 
         $request = new \Spooled\V1\FailRequest();
-        $request->setJobId($params['jobId']);
-        $request->setError($params['error'] ?? 'Unknown error');
+        $request->setJobId((string) $params['jobId']);
+        $request->setError((string) ($params['error'] ?? 'Unknown error'));
 
         if (isset($params['workerId'])) {
             $request->setWorkerId((string) $params['workerId']);
         }
 
-        // Retry by default (the server then honours max_retries). An unset
-        // proto3 bool is false, and `retry = false` sends the job straight to the
-        // dead-letter queue on its FIRST failure; only an explicit false does that.
+        // `retry` is `optional bool` (field 4): true or omitted retries per the
+        // job's max_retries, false dead-letters the job now. Always sent, so a
+        // server from before the field had presence (where omitted meant false)
+        // still retries by default. Only an explicit false dead-letters.
         $request->setRetry(!isset($params['retry']) || (bool) $params['retry']);
 
         // Lease fencing token from dequeue; when set, the failure succeeds only
@@ -478,7 +508,7 @@ final class GrpcQueueResource
         $metadata = $this->client->getMetadata();
 
         $request = new \Spooled\V1\GetQueueStatsRequest();
-        $request->setQueueName($params['queueName'] ?? $params['queue'] ?? 'default');
+        $request->setQueueName((string) ($params['queueName'] ?? $params['queue'] ?? 'default'));
 
         [$response, $status] = $client->GetQueueStats($request, $metadata, $this->client->getCallOptions())->wait();
 
@@ -499,6 +529,9 @@ final class GrpcQueueResource
     /**
      * Renew job lease via gRPC.
      *
+     * Params: `jobId`, `workerId`, `leaseId` (the `leaseId` the dequeue
+     * returned) and `extensionSecs`.
+     *
      * @param array<string, mixed> $params
      * @return array<string, mixed>
      */
@@ -508,8 +541,8 @@ final class GrpcQueueResource
         $metadata = $this->client->getMetadata();
 
         $request = new \Spooled\V1\RenewLeaseRequest();
-        $request->setJobId($params['jobId']);
-        $request->setWorkerId($params['workerId']);
+        $request->setJobId((string) $params['jobId']);
+        $request->setWorkerId((string) $params['workerId']);
 
         if (isset($params['extensionSecs'])) {
             $request->setExtensionSecs((int) $params['extensionSecs']);
@@ -547,6 +580,12 @@ final class GrpcWorkersResource
     /**
      * Register a worker via gRPC.
      *
+     * Params: `queueName` (or `queue`), `hostname`, `workerType`, `version`,
+     * `concurrency` (or `maxConcurrency`), `metadata` (string map) and the
+     * optional stable `workerId` (1-128 characters of letters, digits, `-`,
+     * `_`, `.`). Registering again with the same `workerId` updates that worker
+     * instead of adding one; an id another organization uses is ALREADY_EXISTS.
+     *
      * @param array<string, mixed> $params
      * @return array<string, mixed>
      */
@@ -556,13 +595,24 @@ final class GrpcWorkersResource
         $metadata = $this->client->getMetadata();
 
         $request = new \Spooled\V1\RegisterWorkerRequest();
-        $request->setQueueName($params['queueName'] ?? $params['queue'] ?? 'default');
-        $request->setHostname($params['hostname'] ?? gethostname());
-        $request->setWorkerType($params['workerType'] ?? $params['worker_type'] ?? 'php');
-        $request->setVersion($params['version'] ?? \Spooled\Version::VERSION);
+        $request->setQueueName((string) ($params['queueName'] ?? $params['queue'] ?? 'default'));
+        $request->setHostname((string) ($params['hostname'] ?? gethostname()));
+        $request->setWorkerType((string) ($params['workerType'] ?? $params['worker_type'] ?? 'php'));
+        $request->setVersion((string) ($params['version'] ?? \Spooled\Version::VERSION));
 
-        if (isset($params['concurrency'])) {
-            $request->setMaxConcurrency((int) $params['concurrency']);
+        // Stable worker id (optional, 1-128 chars of letters, digits, `-`, `_`,
+        // `.`): registering again with the same id updates that worker instead
+        // of adding one, so a restart does not count twice against the plan's
+        // worker limit. Omitted or empty: the server assigns a new id.
+        $workerId = $params['workerId'] ?? $params['worker_id'] ?? null;
+        if ($workerId !== null && (string) $workerId !== '') {
+            $request->setWorkerId((string) $workerId);
+        }
+
+        // `maxConcurrency` (the REST name) is accepted next to `concurrency`.
+        $concurrency = $params['concurrency'] ?? $params['maxConcurrency'] ?? null;
+        if ($concurrency !== null) {
+            $request->setMaxConcurrency((int) $concurrency);
         }
 
         if (isset($params['metadata']) && is_array($params['metadata'])) {
@@ -599,7 +649,7 @@ final class GrpcWorkersResource
         $metadata = $this->client->getMetadata();
 
         $request = new \Spooled\V1\HeartbeatRequest();
-        $request->setWorkerId($params['workerId']);
+        $request->setWorkerId((string) $params['workerId']);
 
         if (isset($params['currentJobs'])) {
             $request->setCurrentJobs((int) $params['currentJobs']);
@@ -633,7 +683,7 @@ final class GrpcWorkersResource
         $metadata = $this->client->getMetadata();
 
         $request = new \Spooled\V1\DeregisterRequest();
-        $request->setWorkerId($params['workerId']);
+        $request->setWorkerId((string) $params['workerId']);
 
         [$response, $status] = $client->Deregister($request, $metadata, $this->client->getCallOptions())->wait();
 
