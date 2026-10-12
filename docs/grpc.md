@@ -144,6 +144,8 @@ if ($job['leaseId'] !== null) {
 $grpc->queue->renewLease($renewal);
 ```
 
+`dequeue()` leases each job for `leaseDurationSecs` (5-3600 s). When it is omitted or `0` the server default applies (300 s on Spooled Cloud), so pass a lease that covers the job or renew before it expires. This SDK has no `StreamJobs` wrapper; a raw `StreamJobs` stream delivers one job at a time and sends the next only after the previous one is completed or failed.
+
 A manual loop is responsible for scheduling renewals before the lease expires and for stopping renewal before complete/fail. If you use `pcntl_fork`, create the gRPC client in the child rather than reusing a connection opened before the fork, and always terminate/reap the child before settlement.
 
 The REST-based `SpooledWorker` already handles this lifecycle for synchronous handlers; see [workers.md](workers.md).

@@ -146,7 +146,8 @@ $jobs = $client->jobs->list([
     'tag' => 'billing',  // Optional: filter by a single tag
 ]);
 
-// Cancel a job
+// Cancel a job (DELETE /jobs/{id}): only pending or scheduled jobs can be cancelled;
+// a job a worker is already processing is not interrupted
 $client->jobs->cancel($job->id);
 
 // Boost priority
@@ -690,6 +691,9 @@ $stats = $grpc->queue->getStats(['queueName' => 'fast-jobs']);
 
 // For manual dequeue loops, preserve the returned leaseId and echo it on
 // complete(), fail(), and renewLease(). renewLease uses extensionSecs.
+// dequeue() takes leaseDurationSecs (5-3600; omitted or 0 = the server default, 300 s
+// on Spooled Cloud). A job that can outlive its lease needs a longer lease or a
+// renewLease() call before the lease expires.
 
 // Register worker
 $worker = $grpc->workers->register([
@@ -736,9 +740,12 @@ All operations automatically enforce tier-based limits:
 
 | Tier | Active Jobs | Daily Jobs | Queues | Workers | Webhooks |
 |------|-------------|------------|--------|---------|----------|
-| **Free** | 10 | 1,000 | 5 | 3 | 2 |
-| **Starter** | 100 | 100,000 | 25 | 25 | 10 |
+| **Free** | 10 | 1,000 | 2 | 1 | 1 |
+| **Starter** | 500 | 10,000 | 10 | 5 | 5 |
+| **Pro** | 5,000 | 100,000 | 50 | 25 | 20 |
 | **Enterprise** | Unlimited | Unlimited | Unlimited | Unlimited | Unlimited |
+
+(Source: the backend's `config/plans.rs`. Workflows: Free none, Starter 5, Pro 25.)
 
 When a plan quota or limit is exceeded, you'll receive an `HTTP 429` (a `RateLimitError`)
 with `errorCode` `"QUOTA_EXCEEDED"` and details describing the `resource`, `current`, `limit`, and `plan`:
@@ -754,7 +761,9 @@ try {
     if ($e->errorCode === 'QUOTA_EXCEEDED') {
         echo "Plan quota exceeded: {$e->getMessage()}\n";
     } else {
-        // Per-second rate limiting also returns 429
+        // Request-rate limiting also returns 429. The API sends a Retry-After header only
+        // (no X-RateLimit-* headers). The plan limit is per organization in requests per
+        // second; an API key's own rateLimit is requests per minute.
         echo "Rate limited. Retry after: {$e->getRetryAfterSeconds()} seconds\n";
     }
 }
