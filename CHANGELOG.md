@@ -5,6 +5,112 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-10-12
+
+Brings the SDK in line with backend 0.1.122: the gRPC stubs match the current
+proto, and the newer REST features have typed methods and fields. All changes
+are additive. Existing calls keep working, and responses parse as before.
+
+### Fixed
+
+- **gRPC `fail(['retry' => false])` dead-letters the job again.** The backend made
+  `FailRequest.retry` an `optional bool` (field 4): omitted means "retry per
+  `max_retries`", `false` means "dead-letter now". The checked-in stubs still had
+  a plain proto3 bool, which never serializes `false`, so the server retried the
+  job instead. The message classes are regenerated from
+  `spooled-backend/proto/spooled.proto` (libprotoc 36.2, proto SHA-256
+  `f2b5844b505e0f9c76a58ec281d98c4f062bf0f1f7c0cfdb5c834e6c64977bc3`). The
+  service clients are unchanged because no RPC changed. A unit test checks the
+  serialized bytes. Against production, a job with `max_retries` 3 dead-lettered
+  on the first `fail` with `retry => false`. The default (no `retry`) still
+  retries.
+- `JobList::hasMore` now follows the API's `X-Has-More` header for `jobs->list()`
+  and `jobs->dlq->list()`. Before, it guessed from whether the page was full,
+  which reported one extra (empty) page whenever the last page was exactly full.
+  The guess is still used when the header is missing.
+- `X-RateLimit-*` response headers are no longer dropped on success (see Added).
+- The live test scripts match the current API. `scripts/test-local.php` and
+  `scripts/test-production.php` failed 10 of 129 tests against production. Now
+  134 of 144 pass, with 0 failures and 10 skipped by design. The scripts now:
+  - send the claimed job's `leaseId` on every complete, fail and heartbeat (REST
+    and gRPC);
+  - accept `sp_live_`/`sp_test_` keys;
+  - treat `/metrics` as protected by the operator token;
+  - read a job back before checking its payload.
+- `scripts/test-local.php` is safe to run against a real organization:
+  - Tests with side effects outside the suite's own `test-` queues need
+    `RUN_UNSAFE_TESTS=1`, and `test-production` forces that off. These tests
+    are organization sign-up, an email login start, a billing portal session
+    and regenerating the inbound webhook token.
+  - The start-up cleanup cancels only jobs in the suite's own `test-` queues.
+  - The banner no longer prints part of the API key.
+- `scripts/test-production.php` prints output on Windows. It relayed the
+  child's output with `stream_select()` on pipes, which never returns data there.
+- `scripts/generate-grpc.php` keeps the generated `Spooled\V1` namespace. It
+  rewrote the namespace to `Spooled\Grpc\Stubs`, which broke the composer
+  autoload. The script also works on Windows, has a `--messages-only` mode, and
+  prints the `protoc` version and the proto SHA-256.
+
+### Added
+
+- `jobs->list()` filters, typed and documented:
+  - `status` as one value, a comma list, or a PHP list of strings or `JobStatus`
+    cases (sent in the comma form);
+  - `q` (search text);
+  - `jobType`;
+  - `createdAfter` and `createdBefore`, as an RFC 3339 string or a
+    `DateTimeInterface`.
+- `jobs->history($jobId, ['order' => 'asc'|'desc', 'limit', 'offset'])` reads
+  `GET /jobs/{id}/history`. It returns `JobHistoryList` (`events`, `hasMore`).
+  Each `JobHistoryEvent` has `id`, `jobId`, `eventType`, `workerId`, `details`
+  and `createdAt`.
+- `Worker::$jobsProcessed` and `Worker::$jobsFailed` come from
+  `GET /workers` and `GET /workers/{id}`.
+- `Webhook::$format` can be `json`, `slack`, `discord` or `teams`. New enums for
+  building requests: `Spooled\Types\WebhookFormat`, and
+  `Spooled\Types\WebhookEvent` with all 14 event names, including
+  `job.deadlettered`, `job.retried`, `workflow.completed` and
+  `workflow.failed`. `webhooks->create()`/`update()` accept the cases or plain
+  strings.
+- `ingest->listDeliveries(['status', 'since', 'queue', 'limit', 'offset'])` reads
+  the inbound webhook log, `GET /webhooks/deliveries`. It returns
+  `InboundWebhookDeliveryList` of `InboundWebhookDelivery`.
+- `SpooledClient::getLastRateLimit()` returns a `Spooled\Types\RateLimitInfo`
+  with `limit`, `remaining`, `reset` (Unix seconds), `scope` and `retryAfter`.
+  The values come from the most recent response that carried `X-RateLimit-*`.
+  `HttpClient::getLastResponseHeaders()` and `getLastResponseHeader()` expose
+  the headers of the most recent response.
+- `RateLimitError::$scope` (`X-RateLimit-Scope`) and
+  `RateLimitError::getRateLimitInfo()`.
+- gRPC `workers->register()` sends the optional stable `workerId` (proto
+  field 7). Registering again with the same id updates that worker. It also
+  accepts `maxConcurrency` as well as `concurrency`.
+- `QueueStats::$deadletter` and `QueueStats::$maxJobAgeSeconds` map the API's
+  `deadletter_jobs` and `max_job_age_seconds`.
+
+### Deprecated
+
+These fields have no API counterpart. They are kept for compatibility:
+
+- `QueueStats::$total`, `$cancelled`, `$scheduled` and `$throughput` are always
+  0.
+- `Job::$scheduleId` and `Job::$workerName` are always null.
+
+### Documentation
+
+- The README said the API sends `Retry-After` only and no `X-RateLimit-*`
+  headers. In fact it sends `X-RateLimit-Limit`, `X-RateLimit-Remaining`,
+  `X-RateLimit-Reset` and `X-RateLimit-Scope` on its responses.
+- `leaseId` is required for `jobs->complete()`, `fail()` and `heartbeat()`. The
+  API answers 422 without it, and gRPC complete and fail answer
+  `INVALID_ARGUMENT`. Docblocks and examples used to say it was optional.
+- gRPC payloads and results are `google.protobuf.Struct`: they must be JSON
+  objects, and integers beyond 2^53 lose precision. REST keeps both.
+- The README realtime example reads the snake_case SSE event keys (`job_id`).
+- New response values from the server parse without errors: job and worker
+  statuses, plan tiers, webhook events and formats, and history event types are
+  plain strings. A test covers this.
+
 ## [1.3.0] - 2026-10-10
 
 A behaviour release: the worker now drains on stop, keeps itself alive during
