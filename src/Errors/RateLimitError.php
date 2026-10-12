@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Spooled\Errors;
 
+use Spooled\Types\RateLimitInfo;
 use Throwable;
 
 /**
@@ -25,6 +26,8 @@ final class RateLimitError extends SpooledError
         public readonly ?int $remaining = null,
         public readonly ?int $reset = null,
         ?Throwable $previous = null,
+        /** `X-RateLimit-Scope`: what the limit is counted against (e.g. `organization`). */
+        public readonly ?string $scope = null,
     ) {
         parent::__construct($message, 429, $errorCode, $details, $requestId, $rawBody, $previous);
     }
@@ -56,6 +59,20 @@ final class RateLimitError extends SpooledError
         // Older plan-limit bodies had no `code`; they always named the resource and plan.
         return ($body['error'] ?? null) === 'limit_exceeded'
             || (isset($body['resource'], $body['limit'], $body['plan']));
+    }
+
+    /**
+     * The rate-limit headers of the 429 (`reset` is Unix time in seconds).
+     */
+    public function getRateLimitInfo(): RateLimitInfo
+    {
+        return new RateLimitInfo(
+            limit: $this->limit,
+            remaining: $this->remaining,
+            reset: $this->reset,
+            scope: $this->scope,
+            retryAfter: $this->retryAfter,
+        );
     }
 
     /**

@@ -16,6 +16,7 @@ use Spooled\Config\ClientOptions;
 use Spooled\Errors\NetworkError;
 use Spooled\Errors\SpooledError;
 use Spooled\Errors\TimeoutError;
+use Spooled\Types\RateLimitInfo;
 use Spooled\Util\Casing;
 use Spooled\Util\CircuitBreaker;
 use Spooled\Util\RetryHandler;
@@ -38,6 +39,17 @@ class HttpClient
     private ?string $accessToken;
 
     private ?string $refreshToken;
+
+    /**
+     * Headers of the most recent HTTP response (lower-cased name => first
+     * value). Empty while a request is in flight or when it got no response.
+     *
+     * @var array<string, string>
+     */
+    private array $lastResponseHeaders = [];
+
+    /** Rate-limit headers of the most recent response that carried them. */
+    private ?RateLimitInfo $lastRateLimit = null;
 
     public function __construct(
         private readonly ClientOptions $options,
@@ -175,17 +187,16 @@ class HttpClient
                         RequestOptions::HEADERS => $allHeaders,
                     ];
 
+                    $this->lastResponseHeaders = [];
                     $response = $this->guzzle->request('GET', $url, $options);
 
                     $statusCode = $response->getStatusCode();
                     $body = (string) $response->getBody();
+                    $responseHeaders = $this->flattenHeaders($response->getHeaders());
+                    $this->recordResponse($responseHeaders);
 
                     if ($statusCode >= 400) {
-                        throw SpooledError::fromResponse(
-                            $statusCode,
-                            $body,
-                            $this->flattenHeaders($response->getHeaders()),
-                        );
+                        throw SpooledError::fromResponse($statusCode, $body, $responseHeaders);
                     }
 
                     return $body;
@@ -244,6 +255,34 @@ class HttpClient
     public function getRefreshToken(): ?string
     {
         return $this->refreshToken;
+    }
+
+    /**
+     * Headers of the most recent HTTP response, keyed by lower-cased name
+     * (first value of each). Empty when the last request got no response.
+     *
+     * @return array<string, string>
+     */
+    public function getLastResponseHeaders(): array
+    {
+        return $this->lastResponseHeaders;
+    }
+
+    /**
+     * One header of the most recent HTTP response (case-insensitive name).
+     */
+    public function getLastResponseHeader(string $name): ?string
+    {
+        return $this->lastResponseHeaders[strtolower($name)] ?? null;
+    }
+
+    /**
+     * The `X-RateLimit-*` values of the most recent response that carried
+     * them (success or error), or null before any such response.
+     */
+    public function getLastRateLimit(): ?RateLimitInfo
+    {
+        return $this->lastRateLimit;
     }
 
     /**
@@ -322,12 +361,16 @@ class HttpClient
             $options[RequestOptions::QUERY] = $query;
         }
 
+        // Never let a failed attempt leave the previous response's headers behind.
+        $this->lastResponseHeaders = [];
+
         try {
             $response = $this->guzzle->request($method, $url, $options);
 
             $statusCode = $response->getStatusCode();
             $responseBody = (string) $response->getBody();
             $responseHeaders = $this->flattenHeaders($response->getHeaders());
+            $this->recordResponse($responseHeaders);
 
             // Handle error responses
             if ($statusCode >= 400) {
@@ -356,10 +399,13 @@ class HttpClient
             }
 
             if ($e->hasResponse() && ($response = $e->getResponse()) !== null) {
+                $responseHeaders = $this->flattenHeaders($response->getHeaders());
+                $this->recordResponse($responseHeaders);
+
                 throw SpooledError::fromResponse(
                     $response->getStatusCode(),
                     (string) $response->getBody(),
-                    $this->flattenHeaders($response->getHeaders()),
+                    $responseHeaders,
                 );
             }
 
@@ -479,11 +525,13 @@ class HttpClient
                     $options[RequestOptions::QUERY] = $query;
                 }
 
+                $this->lastResponseHeaders = [];
                 $response = $this->guzzle->request('POST', $url, $options);
 
                 $statusCode = $response->getStatusCode();
                 $responseBody = (string) $response->getBody();
                 $responseHeaders = $this->flattenHeaders($response->getHeaders());
+                $this->recordResponse($responseHeaders);
 
                 if ($statusCode >= 400) {
                     throw SpooledError::fromResponse($statusCode, $responseBody, $responseHeaders);
@@ -515,6 +563,26 @@ class HttpClient
         } catch (JsonException) {
             // Return raw body wrapped in a data key if not valid JSON
             return ['data' => $body];
+        }
+    }
+
+    /**
+     * Remember a response's headers and, when it carries them, its
+     * `X-RateLimit-*` values.
+     *
+     * @param array<string, string> $headers
+     */
+    private function recordResponse(array $headers): void
+    {
+        $lower = [];
+        foreach ($headers as $name => $value) {
+            $lower[strtolower((string) $name)] = $value;
+        }
+        $this->lastResponseHeaders = $lower;
+
+        $rateLimit = RateLimitInfo::fromHeaders($lower);
+        if ($rateLimit !== null) {
+            $this->lastRateLimit = $rateLimit;
         }
     }
 

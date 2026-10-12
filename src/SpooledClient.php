@@ -28,6 +28,7 @@ use Spooled\Resources\WebhookIngestionResource;
 use Spooled\Resources\WebhooksResource;
 use Spooled\Resources\WorkersResource;
 use Spooled\Resources\WorkflowsResource;
+use Spooled\Types\RateLimitInfo;
 
 /**
  * Spooled Cloud SDK client.
@@ -197,6 +198,16 @@ final class SpooledClient
     public function setRefreshToken(string $token): void
     {
         $this->httpClient->setRefreshToken($token);
+    }
+
+    /**
+     * Rate-limit budget from the most recent response that carried the
+     * `X-RateLimit-*` headers: `limit`, `remaining`, `reset` (Unix seconds)
+     * and `scope`. Null before the first such response.
+     */
+    public function getLastRateLimit(): ?RateLimitInfo
+    {
+        return $this->httpClient->getLastRateLimit();
     }
 
     /**

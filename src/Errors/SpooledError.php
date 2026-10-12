@@ -101,6 +101,7 @@ class SpooledError extends Exception
         $limit = self::extractHeader($headers, 'X-RateLimit-Limit');
         $remaining = self::extractHeader($headers, 'X-RateLimit-Remaining');
         $reset = self::extractHeader($headers, 'X-RateLimit-Reset');
+        $scope = self::extractHeader($headers, 'X-RateLimit-Scope');
 
         return new RateLimitError(
             message: $message,
@@ -112,6 +113,7 @@ class SpooledError extends Exception
             limit: $limit !== null ? (int) $limit : null,
             remaining: $remaining !== null ? (int) $remaining : null,
             reset: $reset !== null ? (int) $reset : null,
+            scope: $scope !== null && $scope !== '' ? $scope : null,
         );
     }
 
