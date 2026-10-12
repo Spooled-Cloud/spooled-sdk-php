@@ -108,7 +108,13 @@ final readonly class QueueList
 }
 
 /**
- * Queue statistics.
+ * Queue statistics (`GET /queues/{name}/stats`).
+ *
+ * The API sends `pending_jobs`, `processing_jobs` (`$claimed`),
+ * `completed_jobs_24h`, `failed_jobs_24h` (jobs dead-lettered in the last 24
+ * hours), `deadletter_jobs`, `avg_processing_time_ms`, `max_job_age_seconds`
+ * and `active_workers`. `$cancelled`, `$scheduled`, `$total` and
+ * `$throughput` have no API counterpart and are always 0.
  */
 final readonly class QueueStats
 {
@@ -118,12 +124,20 @@ final readonly class QueueStats
         public int $claimed,
         public int $completed,
         public int $failed,
+        /** @deprecated The API sends no cancelled count; always 0. */
         public int $cancelled,
+        /** @deprecated The API sends no scheduled count; always 0. */
         public int $scheduled,
+        /** @deprecated The API sends no total; always 0. Add the counts you need. */
         public int $total,
         public int $activeWorkers,
         public float $avgProcessingTime,
+        /** @deprecated The API sends no throughput; always 0. */
         public float $throughput,
+        /** Jobs in the queue's dead-letter queue now (API `deadletter_jobs`). */
+        public int $deadletter = 0,
+        /** Age in seconds of the oldest pending job (API `max_job_age_seconds`); null when none waits. */
+        public ?int $maxJobAgeSeconds = null,
     ) {
     }
 
@@ -166,6 +180,10 @@ final readonly class QueueStats
                 ?? 0.0
             ),
             throughput: (float) ($data['throughput'] ?? 0.0),
+            deadletter: (int) ($data['deadletterJobs'] ?? $data['deadletter_jobs'] ?? $data['deadletter'] ?? 0),
+            maxJobAgeSeconds: isset($data['maxJobAgeSeconds']) || isset($data['max_job_age_seconds'])
+                ? (int) ($data['maxJobAgeSeconds'] ?? $data['max_job_age_seconds'])
+                : null,
         );
     }
 }

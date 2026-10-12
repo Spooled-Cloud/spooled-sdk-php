@@ -45,6 +45,17 @@ final readonly class Worker
         public ?string $updatedAt,
         public int $leaseDurationSecs = 0,
         public int $heartbeatIntervalSecs = 0,
+        /**
+         * Jobs this worker completed (counted since backend 0.1.122). Null when
+         * the response does not carry the counter (registration responses).
+         */
+        public ?int $jobsProcessed = null,
+        /**
+         * Failures this worker reported: each retry it caused and each
+         * dead-letter. Jobs released by a lease-expiry sweep are not counted.
+         * Null when the response does not carry the counter.
+         */
+        public ?int $jobsFailed = null,
     ) {
     }
 
@@ -104,7 +115,14 @@ final readonly class Worker
             heartbeatIntervalSecs: (int) (
                 $data['heartbeatIntervalSecs'] ?? $data['heartbeat_interval_secs'] ?? 0
             ),
+            jobsProcessed: self::optionalInt($data['jobsProcessed'] ?? $data['jobs_processed'] ?? null),
+            jobsFailed: self::optionalInt($data['jobsFailed'] ?? $data['jobs_failed'] ?? null),
         );
+    }
+
+    private static function optionalInt(mixed $value): ?int
+    {
+        return is_numeric($value) ? (int) $value : null;
     }
 
     private static function optionalString(mixed $value): ?string

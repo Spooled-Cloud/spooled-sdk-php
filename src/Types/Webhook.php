@@ -55,11 +55,21 @@ final readonly class Webhook
         public ?string $lastDeliveryAt,
         public ?string $createdAt,
         public ?string $updatedAt,
+        /**
+         * Delivery body: `json` (the signed JSON envelope, the default),
+         * `slack`, `discord` or `teams` (the message that chat service's
+         * incoming webhook URL accepts). Kept as the string the API sent, so a
+         * format added later still parses. Null from servers before 0.1.122.
+         */
+        public ?string $format = null,
     ) {
     }
 
     /**
      * Create from API response.
+     *
+     * `events` and `format` are kept as the strings the API sent: an event
+     * name or format added on the server later never makes parsing fail.
      *
      * @param array<string, mixed> $data
      */
@@ -84,6 +94,9 @@ final readonly class Webhook
                 : (isset($data['lastDeliveryAt']) ? (string) $data['lastDeliveryAt'] : null),
             createdAt: isset($data['createdAt']) ? (string) $data['createdAt'] : null,
             updatedAt: isset($data['updatedAt']) ? (string) $data['updatedAt'] : null,
+            format: isset($data['format']) && is_string($data['format']) && $data['format'] !== ''
+                ? $data['format']
+                : null,
         );
     }
 }

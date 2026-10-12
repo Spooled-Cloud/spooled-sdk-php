@@ -35,7 +35,12 @@ final readonly class Job
         public int $retryCount,
         public int $maxRetries,
         public ?string $workerId,
+        /** @deprecated The API sends no worker name on a job; always null. Use `$workerId`. */
         public ?string $workerName,
+        /**
+         * @deprecated The API sends no schedule id on a job, including a job a
+         *             schedule created; always null.
+         */
         public ?string $scheduleId,
         public ?string $workflowId,
         public ?string $parentJobId,

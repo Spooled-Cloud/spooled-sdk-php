@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Spooled\Resources;
 
+use DateTimeInterface;
 use Spooled\Errors\UnsupportedOperationError;
 use Spooled\Types\CustomWebhookResponse;
+use Spooled\Types\InboundWebhookDeliveryList;
+use Spooled\Util\ListQuery;
 
 /**
  * Webhook ingestion resource for ingesting webhooks from various sources.
@@ -34,6 +37,43 @@ final class WebhookIngestionResource extends BaseResource
         $response = $this->httpClient->post("webhooks/{$orgId}/custom", $params, headers: $headers);
 
         return CustomWebhookResponse::fromArray($response);
+    }
+
+    /**
+     * The inbound webhook log: recent requests to `webhooks/{org_id}/custom`
+     * that the API accepted, newest first (`GET /webhooks/deliveries`).
+     *
+     * Params: `status` (`created` or `duplicate`), `since` (RFC 3339 string or
+     * `DateTimeInterface`: entries received at or after it), `queue` /
+     * `queueName`, `limit` (1-100, default 50) and `offset`. An unknown status
+     * or a `since` that is not RFC 3339 is a 400 (ValidationError). The log is
+     * organization-wide, so a queue-scoped API key gets a 403. Entries carry
+     * neither the payload nor any signature.
+     *
+     * @param array{
+     *     status?: 'created'|'duplicate',
+     *     since?: string|DateTimeInterface,
+     *     queue?: string,
+     *     queueName?: string,
+     *     limit?: int,
+     *     offset?: int
+     * }|array<string, mixed> $params
+     */
+    public function listDeliveries(array $params = []): InboundWebhookDeliveryList
+    {
+        if (isset($params['queue']) && !isset($params['queueName'])) {
+            $params['queueName'] = $params['queue'];
+        }
+        unset($params['queue']);
+
+        $params = ListQuery::normalize($params);
+        $response = $this->httpClient->get('webhooks/deliveries', $params);
+
+        return InboundWebhookDeliveryList::fromArray(
+            $response,
+            isset($params['limit']) ? (int) $params['limit'] : null,
+            ListQuery::hasMore($this->httpClient->getLastResponseHeader('X-Has-More')),
+        );
     }
 
     /**

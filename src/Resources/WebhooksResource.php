@@ -9,6 +9,8 @@ use Spooled\Types\SuccessResponse;
 use Spooled\Types\TestWebhookResponse;
 use Spooled\Types\Webhook;
 use Spooled\Types\WebhookDeliveryList;
+use Spooled\Types\WebhookEvent;
+use Spooled\Types\WebhookFormat;
 use Spooled\Types\WebhookList;
 
 /**
@@ -31,7 +33,23 @@ final class WebhooksResource extends BaseResource
     /**
      * Create a new webhook.
      *
-     * @param array<string, mixed> $params
+     * Params: `name`, `url`, `events` (event names as strings or
+     * {@see WebhookEvent} cases: `job.created`, `job.started`,
+     * `job.completed`, `job.failed`, `job.cancelled`, `job.deadlettered`,
+     * `job.retried`, `queue.paused`, `queue.resumed`, `worker.registered`,
+     * `worker.deregistered`, `schedule.triggered`, `workflow.completed`,
+     * `workflow.failed`), optional `secret`, `enabled`, and `format`
+     * ({@see WebhookFormat}: `json` (default), `slack`, `discord` or `teams`).
+     * An unknown event or format is a 400 (ValidationError).
+     *
+     * @param array{
+     *     name?: string,
+     *     url?: string,
+     *     events?: array<string|WebhookEvent>,
+     *     secret?: string,
+     *     enabled?: bool,
+     *     format?: string|WebhookFormat
+     * }|array<string, mixed> $params
      */
     public function create(array $params): Webhook
     {
@@ -65,7 +83,16 @@ final class WebhooksResource extends BaseResource
      * will silently disable HMAC signing, and a receiver that verifies
      * signatures will start rejecting every delivery.
      *
-     * @param array<string, mixed> $params
+     * `events` and `format` take the same values as {@see self::create()}.
+     *
+     * @param array{
+     *     name?: string,
+     *     url?: string,
+     *     events?: array<string|WebhookEvent>,
+     *     secret?: string|null,
+     *     enabled?: bool,
+     *     format?: string|WebhookFormat
+     * }|array<string, mixed> $params
      */
     public function update(string $webhookId, array $params): Webhook
     {
