@@ -9,9 +9,15 @@ declare(strict_types=1);
  * Safe defaults:
  * - Uses Spooled Cloud endpoints
  * - Skips stress/load tests unless --full is provided (to avoid noisy prod runs)
+ * - Never runs the tests with side effects outside the suite's own `test-`
+ *   queues (organization sign-up, email login, billing portal, webhook token
+ *   regeneration): RUN_UNSAFE_TESTS is forced off
+ *
+ * Use an API key of a dedicated test organization: the suite creates and
+ * cancels jobs, workers, schedules, workflows, webhooks and an API key.
  *
  * Usage:
- *   API_KEY=sk_live_... php scripts/test-production.php
+ *   API_KEY=sp_live_... php scripts/test-production.php
  *
  * Options:
  *   --full     Run stress/load tests too (NOT recommended for prod)
@@ -30,7 +36,7 @@ $isVerbose = in_array('--verbose', $argv, true);
 $apiKey = getenv('API_KEY');
 if (!$apiKey) {
     fwrite(STDERR, "❌ API_KEY is required\n");
-    fwrite(STDERR, "   Example: API_KEY=sk_live_... php scripts/test-production.php\n");
+    fwrite(STDERR, "   Example: API_KEY=sp_live_... php scripts/test-production.php\n");
     exit(1);
 }
 
@@ -43,30 +49,17 @@ $skipGrpc = getenv('SKIP_GRPC') !== false ? getenv('SKIP_GRPC') : '0';
 // Default to skipping stress tests in production (can be overridden or --full)
 $skipStress = $isFull ? '0' : (getenv('SKIP_STRESS') !== false ? getenv('SKIP_STRESS') : '1');
 
-// Build environment
-$env = [
+// The child inherits the whole environment (Windows needs SystemRoot and
+// friends for sockets and TLS), with the production settings on top.
+$env = array_merge(getenv(), [
     'API_KEY' => $apiKey,
     'BASE_URL' => $baseUrl,
     'GRPC_ADDRESS' => $grpcAddress,
     'SKIP_GRPC' => $skipGrpc,
     'SKIP_STRESS' => $skipStress,
     'VERBOSE' => $isVerbose ? '1' : (getenv('VERBOSE') ?: '0'),
-];
-
-// Preserve existing environment variables
-foreach ($_ENV as $key => $value) {
-    if (!isset($env[$key])) {
-        $env[$key] = $value;
-    }
-}
-
-// Also include getenv values that might not be in $_ENV
-foreach (['PATH', 'HOME', 'USER', 'SHELL', 'TERM'] as $key) {
-    $value = getenv($key);
-    if ($value !== false && !isset($env[$key])) {
-        $env[$key] = $value;
-    }
-}
+    'RUN_UNSAFE_TESTS' => '0',
+]);
 
 // Run test-local.php from the scripts directory
 $scriptPath = __DIR__ . '/test-local.php';
@@ -79,11 +72,13 @@ echo '║  gRPC:     ' . str_pad($grpcAddress, 46) . " ║\n";
 echo '║  Mode:     ' . str_pad($isFull ? 'Full (with stress tests)' : 'Safe (no stress tests)', 46) . " ║\n";
 echo "╚════════════════════════════════════════════════════════════╝\n\n";
 
-// Create process with environment
+// The child writes straight to this process's stdout/stderr. Relaying its
+// output through pipes with stream_select() never returned data on Windows
+// (select does not work on proc_open pipes there), so the run printed nothing.
 $descriptorSpec = [
-    0 => ['pipe', 'r'], // stdin
-    1 => ['pipe', 'w'], // stdout
-    2 => ['pipe', 'w'], // stderr
+    0 => ['pipe', 'r'], // stdin (closed right away)
+    1 => STDOUT,
+    2 => STDERR,
 ];
 
 $process = proc_open(
@@ -99,53 +94,8 @@ if (!is_resource($process)) {
     exit(1);
 }
 
-// Close stdin
+// Close stdin; proc_close() waits for the child and returns its exit code.
 fclose($pipes[0]);
-
-// Stream stdout
-stream_set_blocking($pipes[1], false);
-stream_set_blocking($pipes[2], false);
-
-while (true) {
-    $read = [$pipes[1], $pipes[2]];
-    $write = null;
-    $except = null;
-
-    $changed = @stream_select($read, $write, $except, 1);
-
-    if ($changed === false) {
-        break;
-    }
-
-    foreach ($read as $pipe) {
-        $data = fread($pipe, 8192);
-        if ($data !== false && $data !== '') {
-            if ($pipe === $pipes[1]) {
-                echo $data;
-            } else {
-                fwrite(STDERR, $data);
-            }
-        }
-    }
-
-    // Check if process has finished
-    $status = proc_get_status($process);
-    if (!$status['running']) {
-        // Read any remaining output
-        $remaining1 = stream_get_contents($pipes[1]);
-        $remaining2 = stream_get_contents($pipes[2]);
-        if ($remaining1) {
-            echo $remaining1;
-        }
-        if ($remaining2) {
-            fwrite(STDERR, $remaining2);
-        }
-        break;
-    }
-}
-
-fclose($pipes[1]);
-fclose($pipes[2]);
 
 $exitCode = proc_close($process);
 exit($exitCode);

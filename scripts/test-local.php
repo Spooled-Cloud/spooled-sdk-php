@@ -21,7 +21,7 @@ declare(strict_types=1);
  * - gRPC (enqueue, dequeue, complete, fail) [when ext-grpc available]
  *
  * Usage:
- *   API_KEY=sk_test_... BASE_URL=http://localhost:8080 php scripts/test-local.php
+ *   API_KEY=sp_test_... BASE_URL=http://localhost:8080 php scripts/test-local.php
  *
  * Options:
  *   GRPC_ADDRESS=localhost:50051  - gRPC server address (local/self-hosted)
@@ -30,6 +30,17 @@ declare(strict_types=1);
  *   VERBOSE=1                     - Enable debug logging
  *   WEBHOOK_PORT=3001             - Custom webhook server port
  *   ADMIN_API_KEY=...             - Admin API key for admin tests
+ *   METRICS_TOKEN=...             - Bearer token for /metrics (the API key is never sent there)
+ *   TEST_RESULTS_FILE=path        - Where to write the JSON results (default: test-results.json)
+ *   RUN_UNSAFE_TESTS=1            - Also run tests with side effects outside the test
+ *                                   queues: unauthenticated organization sign-up (twice),
+ *                                   an email login start (sends an email), a Stripe
+ *                                   billing portal session and regenerating the
+ *                                   organization's inbound webhook token (breaks
+ *                                   existing senders). Local/dev servers only.
+ *
+ * Every queue the suite touches starts with its run prefix (`test-<time>-...`),
+ * and the start-up cleanup cancels only jobs in such `test-` queues.
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
@@ -53,10 +64,13 @@ $VERBOSE = getenv('VERBOSE') === '1' || getenv('VERBOSE') === 'true';
 $SKIP_GRPC = getenv('SKIP_GRPC') !== '0' && getenv('SKIP_GRPC') !== 'false';
 $SKIP_STRESS = getenv('SKIP_STRESS') === '1' || getenv('SKIP_STRESS') === 'true';
 $ADMIN_API_KEY = getenv('ADMIN_API_KEY') ?: null;
+$METRICS_TOKEN = getenv('METRICS_TOKEN') ?: null;
+$RUN_UNSAFE = getenv('RUN_UNSAFE_TESTS') === '1' || getenv('RUN_UNSAFE_TESTS') === 'true';
+$RESULTS_FILE = getenv('TEST_RESULTS_FILE') ?: __DIR__ . '/../test-results.json';
 
 if (empty($API_KEY)) {
     fwrite(STDERR, "❌ API_KEY environment variable is required\n");
-    fwrite(STDERR, "   Usage: API_KEY=sk_test_... BASE_URL=http://localhost:8080 php scripts/test-local.php\n");
+    fwrite(STDERR, "   Usage: API_KEY=sp_test_... BASE_URL=http://localhost:8080 php scripts/test-local.php\n");
     exit(1);
 }
 
@@ -199,6 +213,44 @@ function sleep_ms(int $ms): void
     usleep($ms * 1000);
 }
 
+/**
+ * The lease id of a claimed job, which complete/fail/heartbeat require.
+ */
+function leaseOf(\Spooled\Types\ClaimJobsResult $claimed, string $jobId): ?string
+{
+    foreach ($claimed->jobs as $job) {
+        if ($job->id === $jobId) {
+            return $job->leaseId;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * The lease id of a job in a gRPC dequeue result, which Complete/Fail require.
+ *
+ * @param array<string, mixed>|null $dequeued
+ */
+function grpcLeaseFor(?array $dequeued, string $jobId): ?string
+{
+    foreach ($dequeued['jobs'] ?? [] as $job) {
+        if (($job['id'] ?? null) === $jobId) {
+            return $job['leaseId'] ?? null;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Only the type prefix of an API key (`sp_live_`, `sp_test_`), never any of the secret part.
+ */
+function keyLabel(string $apiKey): string
+{
+    return preg_match('/^([a-z]+_[a-z]+_)/', $apiKey, $m) === 1 ? $m[1] . '…' : '(custom key)';
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Cleanup
 // ─────────────────────────────────────────────────────────────────────────────
@@ -213,12 +265,15 @@ function cleanupOldJobs(SpooledClient $client, TestHarness $harness, bool $verbo
     $client->resetCircuitBreaker();
 
     try {
-        // Cancel all pending and processing jobs
-        $jobs = $client->jobs->list(['limit' => 100]);
+        // Cancel pending/processing jobs of earlier runs of this suite only:
+        // their queues start with `test-`. Other queues of the organization
+        // are never touched.
+        $jobs = $client->jobs->list(['limit' => 100, 'status' => ['pending', 'processing', 'scheduled'], 'q' => 'test-']);
         $cancelled = 0;
 
         foreach ($jobs->jobs ?? [] as $job) {
-            if (in_array($job->status, ['pending', 'processing', 'scheduled'], true)) {
+            if (str_starts_with($job->queueName, 'test-')
+                && in_array($job->status, ['pending', 'processing', 'scheduled'], true)) {
                 try {
                     $client->jobs->cancel($job->id);
                     $cancelled++;
@@ -447,6 +502,7 @@ function testJobLifecycle(SpooledClient $client, TestHarness $harness, string $t
     $queueName = "{$testPrefix}-jobs-lifecycle";
     $jobId = '';
     $workerId = '';
+    $leaseId = null;
 
     $harness->runTest('Create job for lifecycle test', function () use ($client, $queueName, &$jobId): void {
         $result = $client->jobs->create([
@@ -467,7 +523,7 @@ function testJobLifecycle(SpooledClient $client, TestHarness $harness, string $t
         $harness->log("Registered worker: {$workerId}");
     });
 
-    $harness->runTest('POST /api/v1/jobs/claim - Claim job', function () use ($client, $queueName, &$workerId, &$jobId): void {
+    $harness->runTest('POST /api/v1/jobs/claim - Claim job', function () use ($client, $queueName, &$workerId, &$jobId, &$leaseId): void {
         $result = $client->jobs->claim([
             'queue' => $queueName,
             'workerId' => $workerId,
@@ -475,6 +531,8 @@ function testJobLifecycle(SpooledClient $client, TestHarness $harness, string $t
         ]);
         assertEqual(count($result->jobs), 1, 'should claim 1 job');
         assertEqual($result->jobs[0]->id, $jobId, 'should be our job');
+        $leaseId = $result->jobs[0]->leaseId;
+        assertDefined($leaseId, 'claimed job lease id');
     });
 
     $harness->runTest('Job status is processing after claim', function () use ($client, &$jobId, &$workerId): void {
@@ -482,15 +540,16 @@ function testJobLifecycle(SpooledClient $client, TestHarness $harness, string $t
         assertEqual($job->status, 'processing', 'status');
     });
 
-    $harness->runTest('POST /api/v1/jobs/{id}/heartbeat - Extend lease', function () use ($client, &$jobId, &$workerId): void {
-        $client->jobs->heartbeat($jobId, ['workerId' => $workerId, 'leaseDurationSecs' => 60]);
+    $harness->runTest('POST /api/v1/jobs/{id}/heartbeat - Extend lease', function () use ($client, &$jobId, &$workerId, &$leaseId): void {
+        $client->jobs->heartbeat($jobId, ['workerId' => $workerId, 'leaseId' => $leaseId, 'leaseDurationSecs' => 60]);
         $job = $client->jobs->get($jobId);
         assertDefined($job->leaseExpiresAt ?? null, 'lease should be extended');
     });
 
-    $harness->runTest('POST /api/v1/jobs/{id}/complete - Complete job', function () use ($client, &$jobId, &$workerId): void {
+    $harness->runTest('POST /api/v1/jobs/{id}/complete - Complete job', function () use ($client, &$jobId, &$workerId, &$leaseId): void {
         $client->jobs->complete($jobId, [
             'workerId' => $workerId,
+            'leaseId' => $leaseId,
             'result' => ['processed' => true, 'timestamp' => date('c')],
         ]);
         $job = $client->jobs->get($jobId);
@@ -511,6 +570,7 @@ function testJobFailureAndRetry(SpooledClient $client, TestHarness $harness, str
     $queueName = "{$testPrefix}-jobs-failure";
     $jobId = '';
     $workerId = '';
+    $leaseId = null;
 
     $harness->runTest('Create job for failure test', function () use ($client, $queueName, &$jobId): void {
         $result = $client->jobs->create([
@@ -521,19 +581,22 @@ function testJobFailureAndRetry(SpooledClient $client, TestHarness $harness, str
         $jobId = $result->id;
     });
 
-    $harness->runTest('Register worker and claim job', function () use ($client, $queueName, &$workerId, &$jobId): void {
+    $harness->runTest('Register worker and claim job', function () use ($client, $queueName, &$workerId, &$jobId, &$leaseId): void {
         $reg = $client->workers->register([
             'queueName' => $queueName,
             'hostname' => 'test-failure-worker',
             'maxConcurrency' => 1,
         ]);
         $workerId = $reg->id;
-        $client->jobs->claim(['queue' => $queueName, 'workerId' => $workerId, 'limit' => 1]);
+        $claimed = $client->jobs->claim(['queue' => $queueName, 'workerId' => $workerId, 'limit' => 1]);
+        $leaseId = leaseOf($claimed, $jobId);
+        assertDefined($leaseId, 'claimed job lease id');
     });
 
-    $harness->runTest('POST /api/v1/jobs/{id}/fail - Fail job', function () use ($client, &$jobId, &$workerId): void {
+    $harness->runTest('POST /api/v1/jobs/{id}/fail - Fail job', function () use ($client, &$jobId, &$workerId, &$leaseId): void {
         $client->jobs->fail($jobId, [
             'workerId' => $workerId,
+            'leaseId' => $leaseId,
             'error' => 'Intentional test failure',
         ]);
         $job = $client->jobs->get($jobId);
@@ -560,6 +623,165 @@ function testJobFailureAndRetry(SpooledClient $client, TestHarness $harness, str
     try {
         $client->jobs->cancel($jobId);
     } catch (\Throwable $e) {
+    }
+}
+
+function testWave8Surface(SpooledClient $client, TestHarness $harness, string $testPrefix): void
+{
+    echo "\n🆕 List filters, history, worker counters, webhook formats, rate limits\n";
+    echo str_repeat('─', 60) . "\n";
+
+    $queueName = "{$testPrefix}-w8";
+    $jobA = '';
+    $jobB = '';
+    $workerId = '';
+    $startedAt = new \DateTimeImmutable('-1 minute');
+
+    $harness->runTest('Create two typed jobs for the filter tests', function () use ($client, $queueName, &$jobA, &$jobB): void {
+        $jobA = $client->jobs->create(['queue' => $queueName, 'payload' => ['job_type' => 'w8-type-a', 'n' => 1]])->id;
+        $jobB = $client->jobs->create(['queue' => $queueName, 'payload' => ['job_type' => 'w8-type-b', 'n' => 2], 'maxRetries' => 0])->id;
+        assertDefined($jobA, 'job A');
+        assertDefined($jobB, 'job B');
+    });
+
+    $harness->runTest('GET /api/v1/jobs - status list, q, job_type, created_after/before', function () use ($client, $queueName, $startedAt, &$jobA): void {
+        $byType = $client->jobs->list(['queue' => $queueName, 'status' => ['pending', 'scheduled'], 'jobType' => 'w8-type-a']);
+        assertEqual(array_map(static fn ($j) => $j->id, $byType->jobs), [$jobA], 'job_type filter');
+
+        $bySearch = $client->jobs->list(['queue' => $queueName, 'q' => 'w8-type']);
+        assertEqual(count($bySearch->jobs), 2, 'q matches payload.job_type');
+
+        $inWindow = $client->jobs->list([
+            'queue' => $queueName,
+            'createdAfter' => $startedAt,
+            'createdBefore' => new \DateTimeImmutable('+1 minute'),
+        ]);
+        assertEqual(count($inWindow->jobs), 2, 'created_after/created_before window');
+
+        $later = $client->jobs->list(['queue' => $queueName, 'createdAfter' => new \DateTimeImmutable('+1 hour')]);
+        assertEqual(count($later->jobs), 0, 'nothing created in the future');
+
+        try {
+            $client->jobs->list(['createdAfter' => 'yesterday']);
+
+            throw new \RuntimeException('a non-RFC 3339 created_after should be a 400');
+        } catch (\Spooled\Errors\ValidationError $e) {
+            assertEqual($e->statusCode, 400, 'invalid created_after');
+        }
+    });
+
+    $harness->runTest('GET /api/v1/jobs - hasMore follows X-Has-More', function () use ($client, $queueName): void {
+        $full = $client->jobs->list(['queue' => $queueName, 'limit' => 2]);
+        assertEqual(count($full->jobs), 2, 'two jobs');
+        assertEqual($full->hasMore, false, 'an exactly full last page has no more');
+
+        $first = $client->jobs->list(['queue' => $queueName, 'limit' => 1]);
+        assertEqual($first->hasMore, true, 'a first page of one has more');
+    });
+
+    $harness->runTest('Register worker, complete A and fail B (with lease ids)', function () use ($client, $queueName, &$jobA, &$jobB, &$workerId): void {
+        $workerId = $client->workers->register(['queueName' => $queueName, 'hostname' => 'w8-worker', 'maxConcurrency' => 2])->id;
+        $claimed = $client->jobs->claim(['queue' => $queueName, 'workerId' => $workerId, 'limit' => 2]);
+        assertEqual(count($claimed->jobs), 2, 'claimed both');
+        $client->jobs->complete($jobA, ['workerId' => $workerId, 'leaseId' => leaseOf($claimed, $jobA), 'result' => ['ok' => true]]);
+        $client->jobs->fail($jobB, ['workerId' => $workerId, 'leaseId' => leaseOf($claimed, $jobB), 'error' => 'w8 failure']);
+        assertEqual($client->jobs->get($jobB)->status, 'deadletter', 'maxRetries 0 dead-letters');
+    });
+
+    $harness->runTest('complete without leaseId is a 422', function () use ($client, $queueName, &$workerId): void {
+        $id = $client->jobs->create(['queue' => $queueName, 'payload' => ['job_type' => 'w8-type-c']])->id;
+        $client->jobs->claim(['queue' => $queueName, 'workerId' => $workerId, 'limit' => 1]);
+
+        try {
+            $client->jobs->complete($id, ['workerId' => $workerId]);
+
+            throw new \RuntimeException('complete without leaseId should fail');
+        } catch (\Spooled\Errors\ValidationError $e) {
+            assertEqual($e->statusCode, 422, 'lease_id is required');
+        } finally {
+            try {
+                $client->jobs->cancel($id);
+            } catch (\Throwable) {
+            }
+        }
+    });
+
+    $harness->runTest('GET /api/v1/jobs/{id}/history', function () use ($client, &$jobA, &$workerId): void {
+        $asc = $client->jobs->history($jobA);
+        assertTrue(count($asc->events) >= 2, 'at least created and completed events');
+        assertEqual($asc->hasMore, false, 'one page');
+        foreach ($asc->events as $event) {
+            assertEqual($event->jobId, $jobA, 'event job id');
+            assertDefined($event->eventType, 'event type');
+            assertDefined($event->createdAt, 'event time');
+        }
+
+        $desc = $client->jobs->history($jobA, ['order' => 'desc', 'limit' => 1]);
+        assertEqual(count($desc->events), 1, 'limit 1');
+        assertEqual($desc->hasMore, true, 'more events follow');
+        assertEqual($desc->events[0]->id, $asc->events[count($asc->events) - 1]->id, 'desc starts with the newest');
+    });
+
+    $harness->runTest('GET /api/v1/workers/{id} - jobs_processed / jobs_failed', function () use ($client, &$workerId): void {
+        $worker = $client->workers->get($workerId);
+        assertEqual($worker->jobsProcessed, 1, 'jobs processed');
+        assertEqual($worker->jobsFailed, 1, 'jobs failed');
+        $listed = array_values(array_filter(
+            $client->workers->list()->workers,
+            static fn ($w) => $w->id === $workerId,
+        ));
+        assertEqual($listed[0]->jobsProcessed ?? null, 1, 'list carries the counter');
+        $client->workers->deregister($workerId);
+    });
+
+    $harness->runTest('Outgoing webhook: format and the new event names', function () use ($client, $testPrefix): void {
+        $webhook = $client->webhooks->create([
+            'name' => "{$testPrefix}-w8-hook",
+            'url' => 'https://example.com/spooled-sdk-php-w8',
+            'events' => [
+                \Spooled\Types\WebhookEvent::JOB_DEADLETTERED,
+                'job.retried',
+                \Spooled\Types\WebhookEvent::WORKFLOW_COMPLETED,
+                'workflow.failed',
+            ],
+            'format' => \Spooled\Types\WebhookFormat::SLACK,
+            'enabled' => false,
+        ]);
+
+        try {
+            assertEqual($webhook->format, 'slack', 'format on create');
+            assertEqual(
+                $webhook->events,
+                ['job.deadlettered', 'job.retried', 'workflow.completed', 'workflow.failed'],
+                'new event names echoed',
+            );
+            $client->webhooks->update($webhook->id, ['format' => 'teams']);
+            assertEqual($client->webhooks->get($webhook->id)->format, 'teams', 'format after update');
+
+            try {
+                $client->webhooks->update($webhook->id, ['format' => 'carrier-pigeon']);
+
+                throw new \RuntimeException('an unknown format should be a 400');
+            } catch (\Spooled\Errors\ValidationError $e) {
+                assertEqual($e->statusCode, 400, 'unknown format');
+            }
+        } finally {
+            $client->webhooks->delete($webhook->id);
+        }
+    });
+
+    $harness->runTest('X-RateLimit-* headers on a successful response', function () use ($client): void {
+        $client->jobs->list(['limit' => 1]);
+        $rateLimit = $client->getLastRateLimit();
+        assertTrue($rateLimit !== null, 'rate-limit headers present');
+        assertTrue(($rateLimit->limit ?? 0) > 0, 'limit > 0');
+        assertTrue($rateLimit->remaining !== null && $rateLimit->remaining <= $rateLimit->limit, 'remaining <= limit');
+        assertTrue(($rateLimit->reset ?? 0) > time() - 5 && ($rateLimit->reset ?? 0) < time() + 86400, 'reset is Unix seconds');
+    });
+
+    try {
+        $client->jobs->dlq->purge(['queue' => $queueName, 'confirm' => true]);
+    } catch (\Throwable) {
     }
 }
 
@@ -917,7 +1139,8 @@ function testApiKeys(SpooledClient $client, TestHarness $harness, string $testPr
         $newKey = $result->key;
         assertDefined($result->id, 'key id');
         assertDefined($result->key, 'key value');
-        assertTrue(strpos($result->key, 'sk_') === 0, 'key should start with sk_');
+        // sp_live_ / sp_test_ (older servers issued sk_ keys)
+        assertTrue(preg_match('/^(sp_(live|test)_|sk_)/', $result->key) === 1, 'key should start with sp_live_ or sp_test_');
     });
 
     $harness->runTest('GET /api/v1/api-keys/{id} - Get API key', function () use ($client, &$newKeyId, $testPrefix): void {
@@ -1098,10 +1321,11 @@ function testRealtime(SpooledClient $client, TestHarness $harness, string $apiKe
         // Get JWT token first
         $auth = $client->auth->login($apiKey);
 
-        // Test SSE endpoint connectivity with cURL
-        $ch = curl_init("{$baseUrl}/api/v1/events?token={$auth->accessToken}");
+        // Test SSE endpoint connectivity with cURL (Bearer header; a token in
+        // the query string would end up in access logs)
+        $ch = curl_init("{$baseUrl}/api/v1/events");
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: text/event-stream']);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Accept: text/event-stream', "Authorization: Bearer {$auth->accessToken}"]);
         curl_setopt($ch, CURLOPT_TIMEOUT, 2);
         curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 2);
 
@@ -1117,29 +1341,35 @@ function testRealtime(SpooledClient $client, TestHarness $harness, string $apiKe
     });
 }
 
-function testMetrics(TestHarness $harness, string $apiKey, string $baseUrl): void
+function testMetrics(TestHarness $harness, ?string $metricsToken, string $baseUrl): void
 {
     echo "\n📊 Metrics Endpoint\n";
     echo str_repeat('─', 60) . "\n";
 
-    $harness->runTest('GET /metrics - Prometheus metrics', function () use ($apiKey, $baseUrl, $harness): void {
+    // /metrics takes the operator's METRICS_TOKEN, not an API key: with a
+    // token configured on the server it answers 401 to anything else.
+    $harness->runTest('GET /metrics - Prometheus metrics (operator token)', function () use ($metricsToken, $baseUrl, $harness): void {
         $ch = curl_init("{$baseUrl}/metrics");
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: Bearer {$apiKey}"]);
+        if ($metricsToken !== null) {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, ["Authorization: Bearer {$metricsToken}"]);
+        }
         curl_setopt($ch, CURLOPT_TIMEOUT, 3);
 
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
 
-        if ($httpCode === 200 && $response) {
+        if ($httpCode === 200 && is_string($response)) {
             assertTrue(
                 strpos($response, '#') !== false || strpos($response, 'spooled_') !== false,
                 'should contain prometheus metrics',
             );
             $harness->log('Metrics endpoint returned ' . strlen($response) . ' bytes');
+        } elseif ($httpCode === 401 && $metricsToken === null) {
+            $harness->log('Metrics is token-protected (401 without METRICS_TOKEN)');
         } else {
-            $harness->log("Metrics returned {$httpCode}");
+            throw new \RuntimeException("GET /metrics returned {$httpCode}");
         }
     });
 }
@@ -1275,15 +1505,21 @@ function testEdgeCases(SpooledClient $client, TestHarness $harness, string $test
     });
 
     $harness->runTest('Unicode in payload', function () use ($client, $testPrefix): void {
-        $job = $client->jobs->create([
+        $payload = [
+            'message' => '你好世界 🌍 مرحبا',
+            'emoji' => '🎉🚀💻',
+            'japanese' => 'こんにちは',
+        ];
+        // create() returns only {id, created}; read the job back to check the payload
+        $created = $client->jobs->create([
             'queue' => "{$testPrefix}-edge",
-            'payload' => [
-                'message' => '你好世界 🌍 مرحبا',
-                'emoji' => '🎉🚀💻',
-                'japanese' => 'こんにちは',
-            ],
+            'payload' => $payload,
         ]);
-        assertDefined($job->payload, 'payload with unicode');
+        $job = $client->jobs->get($created->id);
+        $stored = is_array($job->payload) ? $job->payload : [];
+        ksort($stored);
+        ksort($payload);
+        assertEqual($stored, $payload, 'unicode payload round trip');
         $client->jobs->cancel($job->id);
     });
 
@@ -1505,7 +1741,11 @@ function testConcurrentOperations(SpooledClient $client, TestHarness $harness, s
 
         for ($i = 0; $i < 5; $i++) {
             try {
-                $client->jobs->complete($job->id, ['workerId' => $worker->id, 'result' => ['attempt' => $i]]);
+                $client->jobs->complete($job->id, [
+                    'workerId' => $worker->id,
+                    'leaseId' => leaseOf($claimed, $job->id),
+                    'result' => ['attempt' => $i],
+                ]);
                 $successes++;
             } catch (\Throwable $e) {
                 $failures++;
@@ -1666,13 +1906,39 @@ function testIngest(SpooledClient $client, TestHarness $harness, string $testPre
     echo "\n📨 Webhook Ingestion\n";
     echo str_repeat('─', 60) . "\n";
 
-    // Note: The /api/v1/ingest/custom endpoint doesn't exist in this backend.
-    // Webhook ingestion is handled via /webhooks/{org_id}/custom with signature auth.
-    // This test is skipped as it requires a different authentication mechanism.
-    $harness->runTest('ingest - custom webhook', function () use ($client, $testPrefix): void {
-        // Skip this test - endpoint requires webhook signature auth, not API key
-        throw new \RuntimeException('Skipped - endpoint uses webhook signature auth');
-    }, true, 'Endpoint uses webhook signature authentication');
+    // POST /webhooks/{org_id}/custom authenticates with the organization's
+    // inbound webhook token (X-Webhook-Token), which GET
+    // /organizations/webhook-token reads without changing it. An organization
+    // that never generated one has none, and the test is skipped.
+    $token = null;
+
+    try {
+        $token = $client->organizations->getWebhookToken();
+    } catch (\Throwable $e) {
+        $harness->log("Could not read the webhook token: {$e->getMessage()}");
+    }
+    $hasToken = $token !== null && $token->token !== '' && $token->url !== null
+        && preg_match('#/webhooks/([^/]+)/custom#', $token->url) === 1;
+
+    $harness->runTest('ingest - custom webhook and the inbound log', function () use ($client, $testPrefix, $token): void {
+        preg_match('#/webhooks/([^/]+)/custom#', (string) $token?->url, $m);
+        $queueName = "{$testPrefix}-ingest";
+        $result = $client->ingest->custom($m[1], [
+            'queueName' => $queueName,
+            'eventType' => 'sdk.test',
+            'payload' => ['source' => 'test-local'],
+        ], ['webhookToken' => $token?->token]);
+        assertDefined($result->jobId, 'job id from the inbound webhook');
+
+        $log = $client->ingest->listDeliveries(['queue' => $queueName, 'status' => 'created', 'limit' => 10]);
+        $entries = array_values(array_filter($log->deliveries, static fn ($d) => $d->jobId === $result->jobId));
+        assertEqual(count($entries), 1, 'the inbound log lists the delivery');
+        assertEqual($entries[0]->eventType, 'sdk.test', 'event type');
+        assertEqual($entries[0]->matchedQueue, $queueName, 'matched queue');
+        assertEqual($log->hasMore, false, 'one entry');
+
+        $client->jobs->cancel((string) $result->jobId);
+    }, !$hasToken, 'the organization has no inbound webhook token');
 
     $harness->runTest('ingest - github signature validation', function () use ($client): void {
         $payload = '{"action":"push"}';
@@ -1720,13 +1986,25 @@ function testBilling(SpooledClient $client, TestHarness $harness): void
                 $harness->log("Billing portal: {$e->getMessage()}");
             }
         }
-    });
+    }, !unsafeTestsEnabled(), 'opens a Stripe portal session; set RUN_UNSAFE_TESTS=1 on a local server');
+}
+
+function unsafeTestsEnabled(): bool
+{
+    return getenv('RUN_UNSAFE_TESTS') === '1' || getenv('RUN_UNSAFE_TESTS') === 'true';
 }
 
 function testRegistration(TestHarness $harness, string $baseUrl): void
 {
     echo "\n🆕 Registration (Open Mode)\n";
     echo str_repeat('─', 60) . "\n";
+
+    if (!unsafeTestsEnabled()) {
+        $harness->runTest('POST /api/v1/organizations - Create new organization', static function (): void {
+        }, true, 'creates an organization; set RUN_UNSAFE_TESTS=1 on a local server');
+
+        return;
+    }
 
     $timestamp = time();
     $testOrgName = "Test Org {$timestamp}";
@@ -1926,6 +2204,7 @@ function testWorkerIntegration(SpooledClient $client, TestHarness $harness, stri
                 try {
                     $client->jobs->complete($claimedJob->id, [
                         'workerId' => $reg->id,
+                        'leaseId' => $claimedJob->leaseId,
                         'result' => ['processed' => true],
                     ]);
                     $processed++;
@@ -1970,6 +2249,7 @@ function testWorkerIntegration(SpooledClient $client, TestHarness $harness, stri
         if (!empty($claimed->jobs)) {
             $client->jobs->fail($claimed->jobs[0]->id, [
                 'workerId' => $reg->id,
+                'leaseId' => $claimed->jobs[0]->leaseId,
                 'error' => 'Intentional failure',
             ]);
             $jobsFailed++;
@@ -2069,6 +2349,7 @@ function testWorkflowExecution(SpooledClient $client, TestHarness $harness, stri
 
                 $client->jobs->complete($job->id, [
                     'workerId' => $reg->id,
+                    'leaseId' => $job->leaseId,
                     'result' => ['step' => $step, 'completed' => true],
                 ]);
             }
@@ -2179,6 +2460,7 @@ function testWebhookDelivery(SpooledClient $client, TestHarness $harness, string
         foreach ($claimed->jobs as $job) {
             $client->jobs->complete($job->id, [
                 'workerId' => $reg->id,
+                'leaseId' => $job->leaseId,
                 'result' => ['processed' => true],
             ]);
         }
@@ -2383,7 +2665,7 @@ function testEmailLogin(SpooledClient $client, TestHarness $harness): void
                 $harness->log("Email login start returned {$e->statusCode}");
             }
         }
-    });
+    }, !unsafeTestsEnabled(), 'sends an email; set RUN_UNSAFE_TESTS=1 on a local server');
 
     $harness->runTest('GET /api/v1/auth/check-email - Check email exists', function () use ($client, $harness): void {
         $testEmail = 'test@example.com';
@@ -2422,6 +2704,13 @@ function testTierLimits(SpooledClient $client, TestHarness $harness, string $bas
     $tierTestOrgSlug = 'tier-test-' . time();
     $tierTestApiKey = '';
     $orgCreationDisabled = false;
+
+    if (!unsafeTestsEnabled()) {
+        $harness->runTest('Tier: Create fresh free tier org', static function (): void {
+        }, true, 'creates an organization; set RUN_UNSAFE_TESTS=1 on a local server');
+
+        return;
+    }
 
     $harness->runTest('Tier: Create fresh free tier org', function () use ($baseUrl, $tierTestOrgSlug, &$tierTestApiKey, &$orgCreationDisabled, $harness): void {
         $ch = curl_init("{$baseUrl}/api/v1/organizations");
@@ -2542,7 +2831,7 @@ function testOrganizationWebhookToken(SpooledClient $client, TestHarness $harnes
                 throw $e;
             }
         }
-    });
+    }, !unsafeTestsEnabled(), 'invalidates the token existing senders use; set RUN_UNSAFE_TESTS=1 on a local server');
 
     // The clear route exists but its handler always answers 422, so the SDK
     // method fails locally with a typed error instead of calling it.
@@ -2698,6 +2987,7 @@ function testGrpc(SpooledClient $client, TestHarness $harness, string $testPrefi
             if (!empty($dequeue['jobs'])) {
                 $result = $grpcClient->queue->complete([
                     'jobId' => $dequeue['jobs'][0]['id'],
+                    'leaseId' => $dequeue['jobs'][0]['leaseId'] ?? null,
                     'workerId' => $workerId,
                     'result' => ['completed' => true],
                 ]);
@@ -2746,6 +3036,7 @@ function testGrpc(SpooledClient $client, TestHarness $harness, string $testPrefi
             // Complete
             $grpcClient->queue->complete([
                 'jobId' => $jobId,
+                'leaseId' => grpcLeaseFor($deq, $jobId),
                 'workerId' => $wid,
                 'result' => ['done' => true],
             ]);
@@ -2778,6 +3069,7 @@ function testGrpc(SpooledClient $client, TestHarness $harness, string $testPrefi
             if (!empty($deq['jobs'])) {
                 $grpcClient->queue->fail([
                     'jobId' => $deq['jobs'][0]['id'],
+                    'leaseId' => $deq['jobs'][0]['leaseId'] ?? null,
                     'workerId' => $reg['workerId'],
                     'error' => 'Intentional gRPC failure',
                 ]);
@@ -2802,7 +3094,7 @@ function testGrpc(SpooledClient $client, TestHarness $harness, string $testPrefi
                 'maxRetries' => 0,
             ]);
 
-            $grpcClient->queue->dequeue([
+            $deq = $grpcClient->queue->dequeue([
                 'queueName' => $failQueue,
                 'workerId' => $wId,
                 'batchSize' => 1,
@@ -2810,6 +3102,7 @@ function testGrpc(SpooledClient $client, TestHarness $harness, string $testPrefi
 
             $failResult = $grpcClient->queue->fail([
                 'jobId' => $enq['jobId'],
+                'leaseId' => grpcLeaseFor($deq, $enq['jobId']),
                 'workerId' => $wId,
                 'error' => 'Intentional failure to DLQ',
                 'retry' => false,
@@ -2836,7 +3129,7 @@ function testGrpc(SpooledClient $client, TestHarness $harness, string $testPrefi
                 'maxRetries' => 0,
             ]);
 
-            $grpcClient->queue->dequeue([
+            $deq = $grpcClient->queue->dequeue([
                 'queueName' => $failQueue,
                 'workerId' => $wId,
                 'batchSize' => 1,
@@ -2845,6 +3138,7 @@ function testGrpc(SpooledClient $client, TestHarness $harness, string $testPrefi
             $longError = str_pad('Error: ', 5000, 'x');
             $failResult = $grpcClient->queue->fail([
                 'jobId' => $enq['jobId'],
+                'leaseId' => grpcLeaseFor($deq, $enq['jobId']),
                 'workerId' => $wId,
                 'error' => $longError,
                 'retry' => false,
@@ -2918,6 +3212,7 @@ function testGrpc(SpooledClient $client, TestHarness $harness, string $testPrefi
             if (!empty($deq1['jobs'])) {
                 $grpcClient->queue->complete([
                     'jobId' => $deq1['jobs'][0]['id'],
+                    'leaseId' => $deq1['jobs'][0]['leaseId'] ?? null,
                     'workerId' => $wId,
                 ]);
             }
@@ -2950,7 +3245,7 @@ function testGrpc(SpooledClient $client, TestHarness $harness, string $testPrefi
                 'payload' => ['test' => 'result'],
             ]);
 
-            $grpcClient->queue->dequeue([
+            $deq = $grpcClient->queue->dequeue([
                 'queueName' => $resultQueue,
                 'workerId' => $wId,
                 'batchSize' => 1,
@@ -2971,6 +3266,7 @@ function testGrpc(SpooledClient $client, TestHarness $harness, string $testPrefi
 
             $grpcClient->queue->complete([
                 'jobId' => $enq['jobId'],
+                'leaseId' => grpcLeaseFor($deq, $enq['jobId']),
                 'workerId' => $wId,
                 'result' => $complexResult,
             ]);
@@ -3153,6 +3449,7 @@ function testGrpcAdvanced(SpooledClient $client, TestHarness $harness, string $t
             foreach ($result['jobs'] ?? [] as $job) {
                 $grpcClient->queue->complete([
                     'jobId' => $job['id'],
+                    'leaseId' => $job['leaseId'] ?? null,
                     'workerId' => $reg['workerId'],
                     'result' => ['completed' => true],
                 ]);
@@ -3183,6 +3480,7 @@ function testGrpcAdvanced(SpooledClient $client, TestHarness $harness, string $t
                 try {
                     $grpcClient->queue->renewLease([
                         'jobId' => $deq['jobs'][0]['id'],
+                        'leaseId' => $deq['jobs'][0]['leaseId'] ?? null,
                         'workerId' => $reg['workerId'],
                         'leaseDurationSecs' => 120,
                     ]);
@@ -3194,6 +3492,7 @@ function testGrpcAdvanced(SpooledClient $client, TestHarness $harness, string $t
                 // Complete the job to free up slot
                 $grpcClient->queue->complete([
                     'jobId' => $deq['jobs'][0]['id'],
+                    'leaseId' => $deq['jobs'][0]['leaseId'] ?? null,
                     'workerId' => $reg['workerId'],
                     'result' => ['completed' => true],
                 ]);
@@ -3305,6 +3604,7 @@ function testGrpcAdvanced(SpooledClient $client, TestHarness $harness, string $t
                 // Complete the first job to free up active job slot
                 $grpcClient->queue->complete([
                     'jobId' => $result['jobs'][0]['id'],
+                    'leaseId' => $result['jobs'][0]['leaseId'] ?? null,
                     'workerId' => $reg['workerId'],
                     'result' => ['completed' => true],
                 ]);
@@ -3319,6 +3619,7 @@ function testGrpcAdvanced(SpooledClient $client, TestHarness $harness, string $t
             if (!empty($result2['jobs'])) {
                 $grpcClient->queue->complete([
                     'jobId' => $result2['jobs'][0]['id'],
+                    'leaseId' => $result2['jobs'][0]['leaseId'] ?? null,
                     'workerId' => $reg['workerId'],
                     'result' => ['completed' => true],
                 ]);
@@ -3550,7 +3851,8 @@ echo str_repeat('═', 60) . "\n";
 echo "   🧪 COMPREHENSIVE SPOOLED TEST SUITE (PHP)\n";
 echo str_repeat('═', 60) . "\n";
 echo "   API: {$BASE_URL}\n";
-echo '   Key: ' . substr($API_KEY, 0, 12) . "...\n";
+echo '   Key: ' . keyLabel($API_KEY) . "\n";
+echo '   Unsafe tests: ' . ($RUN_UNSAFE ? 'ON (RUN_UNSAFE_TESTS=1)' : 'off') . "\n";
 echo "   Webhook Port: {$WEBHOOK_PORT}\n";
 echo '   Verbose: ' . ($VERBOSE ? 'true' : 'false') . "\n";
 echo str_repeat('═', 60) . "\n";
@@ -3580,6 +3882,7 @@ try {
     testJobIdempotency($client, $harness, $testPrefix);
     testJobLifecycle($client, $harness, $testPrefix);
     testJobFailureAndRetry($client, $harness, $testPrefix);
+    testWave8Surface($client, $harness, $testPrefix);
     testDLQ($client, $harness, $testPrefix);
     testQueues($client, $harness, $testPrefix);
     testWorkers($client, $harness, $testPrefix);
@@ -3594,7 +3897,7 @@ try {
     testWebhookRetry($client, $harness, $testPrefix);
     testAuth($client, $harness, $API_KEY, $BASE_URL);
     testRealtime($client, $harness, $API_KEY, $BASE_URL);
-    testMetrics($harness, $API_KEY, $BASE_URL);
+    testMetrics($harness, $METRICS_TOKEN, $BASE_URL);
     testWebSocket($client, $harness, $API_KEY, $BASE_URL);
     testOrgManagement($client, $harness, $testPrefix);
     testOrganizationWebhookToken($client, $harness);
@@ -3640,7 +3943,7 @@ try {
 $harness->printSummary();
 
 // Save results to JSON
-$resultsFile = __DIR__ . '/../test-results.json';
+$resultsFile = $RESULTS_FILE;
 file_put_contents($resultsFile, json_encode([
     'timestamp' => date('c'),
     'total' => count($harness->getResults()),
