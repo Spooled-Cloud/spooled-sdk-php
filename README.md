@@ -139,12 +139,23 @@ $job = $client->jobs->create([
 // Get job status
 $job = $client->jobs->get($job->id);
 
-// List jobs
+// List jobs (all filters optional, combined with AND)
 $jobs = $client->jobs->list([
     'queue' => 'my-queue',
-    'status' => 'pending',
-    'tag' => 'billing',  // Optional: filter by a single tag
+    'status' => ['failed', 'deadletter'],   // one status, a comma list, or a list
+    'q' => 'invoice',                        // id prefix, or text in the queue name / payload.job_type
+    'jobType' => 'send-email',               // exact payload.job_type
+    'createdAfter' => new DateTimeImmutable('-1 day'),  // RFC 3339 string or DateTimeInterface
+    'createdBefore' => '2026-10-12T00:00:00Z',
+    'tag' => 'billing',                      // a single tag
 ]);
+// A created_after/created_before that is not RFC 3339 is a ValidationError (400).
+
+// A job's lifecycle events, oldest first ('order' => 'desc' for newest first)
+$history = $client->jobs->history($job->id, ['limit' => 100]);
+foreach ($history->events as $event) {
+    echo "{$event->createdAt} {$event->eventType} {$event->workerId}\n";
+}
 
 // Cancel a job (DELETE /jobs/{id}): only pending or scheduled jobs can be cancelled;
 // a job a worker is already processing is not interrupted
@@ -162,9 +173,29 @@ $result = $client->jobs->bulkEnqueue([
     ],
 ]);
 
-// Paginate: GET /jobs returns plain rows, so hasMore means "this page was full"
-$page = $client->jobs->list(['queue' => 'my-queue', 'limit' => 50]);
-$page->hasMore;
+// Paginate: hasMore comes from the API's X-Has-More header
+$offset = 0;
+do {
+    $page = $client->jobs->list(['queue' => 'my-queue', 'limit' => 50, 'offset' => $offset]);
+    $offset += count($page->jobs);
+} while ($page->hasMore);
+```
+
+Workers settle jobs they claimed with `jobs->complete()`, `jobs->fail()` and
+extend them with `jobs->heartbeat()`. Each call needs the claimed job's
+`leaseId` (the API answers 422 without it); `SpooledWorker` does this for you:
+
+```php
+<?php
+
+$claimed = $client->jobs->claim(['queue' => 'my-queue', 'workerId' => $workerId, 'limit' => 1]);
+foreach ($claimed->jobs as $job) {
+    $client->jobs->complete($job->id, [
+        'workerId' => $workerId,
+        'leaseId' => $job->leaseId,
+        'result' => ['ok' => true],
+    ]);
+}
 ```
 
 ### Workers
@@ -228,6 +259,10 @@ the worker heartbeat alive, enforces the job's `timeout_seconds` (the handler is
 aborted and the job failed with `Job timeout exceeded`), and, after `stop()`,
 aborts a handler still running after `shutdownTimeout` (job failed with `Worker
 shutdown timeout`). See [docs/workers.md](docs/workers.md).
+
+Registered workers report what they did: `$client->workers->get($id)` and
+`workers->list()` carry `jobsProcessed` (jobs completed) and `jobsFailed`
+(failures reported: each retry it caused and each dead-letter).
 
 ### Workflows (DAGs)
 
@@ -315,9 +350,10 @@ if ($realtime->isWebSocketAvailable()) {
     echo "Using SSE\n";
 }
 
-// Subscribe to queue events
+// Subscribe to queue events. Event data comes as the server sends it, with
+// snake_case keys (job_id, queue_name, ...).
 $realtime->subscribeToQueue('my-queue', function (array $event): void {
-    echo "Event: {$event['type']} - Job: {$event['data']['jobId']}\n";
+    echo "Event: {$event['type']} - Job: {$event['data']['job_id']}\n";
 });
 
 // Or subscribe to specific job
@@ -390,13 +426,26 @@ Configure outgoing webhooks for job events:
 ```php
 <?php
 
+use Spooled\Types\WebhookEvent;
+use Spooled\Types\WebhookFormat;
+
 // Create webhook
 $webhook = $client->webhooks->create([
     'name' => 'My Webhook',
     'url' => 'https://your-app.com/webhooks/spooled',
-    'events' => ['job.completed', 'job.failed'],
+    'events' => ['job.completed', 'job.failed', WebhookEvent::JOB_DEADLETTERED],
     'secret' => 'hmac-secret',
 ]);
+
+// Post straight into a chat channel: format slack, discord or teams turns the
+// event into the message that service's incoming webhook URL accepts
+$alerts = $client->webhooks->create([
+    'name' => 'Failures to Slack',
+    'url' => 'https://hooks.slack.com/services/...',
+    'events' => [WebhookEvent::JOB_DEADLETTERED, WebhookEvent::WORKFLOW_FAILED],
+    'format' => WebhookFormat::SLACK,   // or 'slack'; default 'json'
+]);
+echo $alerts->format; // "slack"
 
 // Test webhook
 $client->webhooks->test($webhook->id);
@@ -410,6 +459,15 @@ $client->webhooks->retryDelivery($webhook->id, $deliveryId);
 // Delete webhook
 $client->webhooks->delete($webhook->id);
 ```
+
+Events: `job.created`, `job.started`, `job.completed`, `job.failed`,
+`job.cancelled`, `job.deadlettered`, `job.retried`, `queue.paused`,
+`queue.resumed`, `worker.registered`, `worker.deregistered`,
+`schedule.triggered`, `workflow.completed` and `workflow.failed`
+(`WebhookEvent` has a case for each). `format` is `json` (the signed JSON
+envelope, the default), `slack`, `discord` or `teams`. An unknown event or
+format is a `ValidationError` (400). Read back, `Webhook::$events` and
+`Webhook::$format` are plain strings, so values the API adds later still parse.
 
 On update, `secret` is three-state. Omit the key to keep the current secret,
 pass a string to replace it, and pass `null` to **clear** it. Clearing means
@@ -541,7 +599,17 @@ $result = $client->ingest->custom(
 );
 
 echo "Created job: {$result->jobId}\n";
+
+// The inbound log: requests the API accepted, newest first (no payloads or
+// signatures). Filters: status (created|duplicate), since, queue, limit, offset.
+$log = $client->ingest->listDeliveries(['status' => 'created', 'since' => new DateTimeImmutable('-1 hour')]);
+foreach ($log->deliveries as $delivery) {
+    echo "{$delivery->createdAt} {$delivery->eventType} -> {$delivery->matchedQueue} job {$delivery->jobId}\n";
+}
 ```
+
+The inbound log is organization-wide, so it needs an API key that is not
+restricted to some queues (a queue-scoped key gets an `AuthorizationError`).
 
 `ingest->github()` and `ingest->stripe()` are deprecated: the API has no such
 routes (they always 404'd), so they now throw `UnsupportedOperationError`
@@ -689,17 +757,30 @@ echo "Created job: {$result['jobId']}\n";
 // Get queue stats
 $stats = $grpc->queue->getStats(['queueName' => 'fast-jobs']);
 
-// For manual dequeue loops, preserve the returned leaseId and echo it on
-// complete(), fail(), and renewLease(). renewLease uses extensionSecs.
+// For manual dequeue loops, keep the returned leaseId and send it on
+// complete(), fail(), and renewLease(): the server rejects a complete or fail
+// without it (INVALID_ARGUMENT). renewLease uses extensionSecs.
 // dequeue() takes leaseDurationSecs (5-3600; omitted or 0 = the server default, 300 s
 // on Spooled Cloud). A job that can outlive its lease needs a longer lease or a
 // renewLease() call before the lease expires.
+$dequeued = $grpc->queue->dequeue(['queueName' => 'fast-jobs', 'workerId' => $workerId, 'batchSize' => 1]);
+foreach ($dequeued['jobs'] as $job) {
+    $grpc->queue->fail([
+        'jobId' => $job['id'],
+        'workerId' => $workerId,
+        'leaseId' => $job['leaseId'],
+        'error' => 'bad input',
+        'retry' => false,   // dead-letter now; omit to retry per the job's max_retries
+    ]);
+}
 
-// Register worker
+// Register worker. A stable workerId (1-128 chars, [A-Za-z0-9._-]) makes a
+// re-registration after a restart update the same worker instead of adding one.
 $worker = $grpc->workers->register([
     'queueName' => 'fast-jobs',
     'hostname' => gethostname(),
     'concurrency' => 10,
+    'workerId' => 'fast-jobs-worker-01',
 ]);
 
 // Send heartbeat
@@ -714,6 +795,11 @@ $grpc->workers->deregister(['workerId' => $worker['workerId']]);
 // Clean up connections
 $client->close();
 ```
+
+gRPC carries `payload` and `result` as `google.protobuf.Struct`. A payload must
+therefore be a JSON object: a list or scalar payload does not arrive as sent
+(the server gets an empty or re-keyed object), and integers beyond 2^53 lose
+precision. REST (`$client->jobs->create()`) keeps such payloads exactly.
 
 ### Standalone gRPC Client
 
@@ -761,11 +847,26 @@ try {
     if ($e->errorCode === 'QUOTA_EXCEEDED') {
         echo "Plan quota exceeded: {$e->getMessage()}\n";
     } else {
-        // Request-rate limiting also returns 429. The API sends a Retry-After header only
-        // (no X-RateLimit-* headers). The plan limit is per organization in requests per
+        // Request-rate limiting also returns 429, with Retry-After and the
+        // X-RateLimit-* headers ($e->limit, $e->remaining, $e->reset in Unix
+        // seconds, $e->scope). The plan limit is per organization in requests per
         // second; an API key's own rateLimit is requests per minute.
         echo "Rate limited. Retry after: {$e->getRetryAfterSeconds()} seconds\n";
     }
+}
+```
+
+The API sends `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`
+(Unix time in seconds) and `X-RateLimit-Scope` on its responses, not only on a
+429. The client keeps the latest values:
+
+```php
+<?php
+
+$client->jobs->list(['limit' => 1]);
+$rateLimit = $client->getLastRateLimit(); // RateLimitInfo|null
+if ($rateLimit !== null && $rateLimit->remaining === 0) {
+    sleep($rateLimit->secondsUntilReset() ?? 1);
 }
 ```
 
@@ -818,12 +919,20 @@ The SDK includes parity test scripts that match the Node.js and Python SDK test 
 # Run local tests (requires running backend)
 API_KEY=sp_test_... BASE_URL=http://localhost:8080 composer scripts:test-local
 
-# Run production tests (safe subset)
+# Run production tests: use a key of a dedicated test organization
 API_KEY=sp_live_... composer scripts:test-production
 
 # Interactive verification
 composer scripts:verify-production
 ```
+
+Both scripts work only in queues whose names start with the run's `test-`
+prefix, and the start-up cleanup cancels only jobs in such queues. Tests with
+side effects beyond that (organization sign-up, an email login start, a
+billing portal session, regenerating the inbound webhook token) run only with
+`RUN_UNSAFE_TESTS=1`, which `test-production` always turns off. Other
+settings: `SKIP_GRPC`, `SKIP_STRESS`, `VERBOSE`, `METRICS_TOKEN` (for
+`/metrics`), `ADMIN_API_KEY` and `TEST_RESULTS_FILE`.
 
 ## License
 

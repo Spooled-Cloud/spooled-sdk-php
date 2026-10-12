@@ -68,15 +68,31 @@ $lookup = $grpc->queue->getJob($result['jobId']);
 $stats = $grpc->queue->getStats(['queueName' => 'emails']);
 ```
 
+### Payloads travel as `google.protobuf.Struct`
+
+gRPC carries `payload` and `result` as `google.protobuf.Struct`, which is a JSON
+object. So over gRPC:
+
+- a payload or result must be a JSON object: a list or a scalar does not arrive
+  as sent (the server sees an empty or re-keyed object);
+- integers beyond 2^53 lose precision (Struct numbers are doubles).
+
+REST (`$client->jobs->create()`, `jobs->complete()`) keeps any JSON value and
+large integers exactly; use it for such payloads.
+
 ## Manual Worker Loop
 
-Register a worker, dequeue jobs, and preserve the lease fencing token returned with each job:
+Register a worker, dequeue jobs, and send back the lease id returned with each job:
 
 ```php
 $registration = $grpc->workers->register([
     'queueName' => 'emails',
     'hostname' => gethostname() ?: 'php-worker',
     'concurrency' => 5,
+    // Optional stable id (1-128 chars, [A-Za-z0-9._-]): registering again with
+    // it after a restart updates this worker instead of adding one, so a
+    // restart does not count twice against the plan's worker limit.
+    'workerId' => 'emails-worker-01',
     'metadata' => [
         'sdkVersion' => \Spooled\Version::VERSION,
         'environment' => 'production',
@@ -100,48 +116,43 @@ foreach ($result['jobs'] as $job) {
     try {
         $output = processEmail($job['payload']);
 
-        $completion = [
+        $grpc->queue->complete([
             'jobId' => $job['id'],
             'workerId' => $workerId,
+            'leaseId' => $job['leaseId'],
             'result' => $output,
-        ];
-        if ($job['leaseId'] !== null) {
-            $completion['leaseId'] = $job['leaseId'];
-        }
-        $grpc->queue->complete($completion);
+        ]);
     } catch (Throwable $e) {
-        $failure = [
+        $grpc->queue->fail([
             'jobId' => $job['id'],
             'workerId' => $workerId,
+            'leaseId' => $job['leaseId'],
             'error' => $e->getMessage(),
-            'retry' => true,
-        ];
-        if ($job['leaseId'] !== null) {
-            $failure['leaseId'] = $job['leaseId'];
-        }
-        $grpc->queue->fail($failure);
+            // Omitted or true: retry according to the job's max_retries.
+            // false: move the job to the dead-letter queue now.
+            'retry' => !($e instanceof InvalidArgumentException),
+        ]);
     }
 }
 
 $grpc->workers->deregister(['workerId' => $workerId]);
 ```
 
-`dequeue()` returns `leaseId` as `null` when connected to a legacy server. When present, echo it unchanged on complete, fail, and renew. A stale token is rejected server-side, preventing expired work from settling or extending a replacement lease.
+Send each job's `leaseId` unchanged on complete, fail, and renew. The server requires it on complete and fail: without it the call fails with `INVALID_ARGUMENT` (code 3). A stale token is rejected server-side, preventing expired work from settling or extending a replacement lease. (`dequeue()` returns `leaseId` as `null` only from servers older than lease fencing.)
+
+`retry` on `fail()` is an `optional bool` on the wire (field 4): the SDK sends `true` unless you pass `'retry' => false`, and only `false` dead-letters the job on this failure. SDK releases before 1.4.0 serialized `retry => false` as an absent field, so on a current server such a job was retried instead of dead-lettered.
 
 ## Renew a Lease
 
 `renewLease()` uses `extensionSecs` (not `leaseDurationSecs`):
 
 ```php
-$renewal = [
+$grpc->queue->renewLease([
     'jobId' => $job['id'],
     'workerId' => $workerId,
+    'leaseId' => $job['leaseId'],
     'extensionSecs' => 60,
-];
-if ($job['leaseId'] !== null) {
-    $renewal['leaseId'] = $job['leaseId'];
-}
-$grpc->queue->renewLease($renewal);
+]);
 ```
 
 `dequeue()` leases each job for `leaseDurationSecs` (5-3600 s). When it is omitted or `0` the server default applies (300 s on Spooled Cloud), so pass a lease that covers the job or renew before it expires. This SDK has no `StreamJobs` wrapper; a raw `StreamJobs` stream delivers one job at a time and sends the next only after the previous one is completed or failed.
@@ -180,4 +191,4 @@ $client->close();
 
 ## Proto Reference
 
-The generated stubs are under `src/Grpc/Stubs/`. The shared protocol definition is maintained in the backend repository at `proto/spooled.proto`.
+The generated stubs are under `src/Grpc/Stubs/` (namespace `Spooled\V1`). The shared protocol definition is maintained in the backend repository at `proto/spooled.proto`. Regenerate with `php scripts/generate-grpc.php` (needs `protoc` and `grpc_php_plugin`), or `php scripts/generate-grpc.php --messages-only` when only messages changed and `grpc_php_plugin` is not installed; the script prints the `protoc` version and the proto SHA-256 to record in the release.

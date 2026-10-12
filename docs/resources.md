@@ -39,15 +39,46 @@ $job = $client->jobs->createAndGet([
 ```php
 $result = $client->jobs->list([
     'queue' => 'my-queue',              // Optional: filter by queue
-    'status' => 'pending',              // Optional: 'pending' | 'processing' | 'completed' | 'failed' | 'cancelled'
-    'limit' => 10,                      // Pagination limit
+    'status' => ['failed', 'deadletter'], // Optional: one status, 'a,b', or a list (strings or JobStatus cases)
+    'q' => 'invoice',                   // Optional: id prefix, or text in the queue name / payload.job_type
+    'jobType' => 'send-email',          // Optional: exact payload.job_type
+    'createdAfter' => new DateTimeImmutable('-1 day'), // Optional: RFC 3339 string or DateTimeInterface
+    'createdBefore' => '2026-10-12T00:00:00Z',         // Optional: created before this instant
+    'tag' => 'billing',                 // Optional: a single tag
+    'limit' => 10,                      // Pagination limit (1-100, default 50)
     'offset' => 0,                      // Pagination offset
 ]);
 
 foreach ($result->jobs as $job) {
     echo "{$job->id}: {$job->status}\n";
 }
+
+$result->hasMore; // from the API's X-Has-More header
 ```
+
+Statuses: `pending`, `scheduled`, `processing`, `completed`, `failed`,
+`deadletter`, `cancelled`. A `createdAfter`/`createdBefore` that is not RFC 3339,
+or an unknown status, is a `ValidationError` (400). `Job::$status` is a plain
+string, so a status the API adds later still parses.
+
+### Job History
+
+```php
+$history = $client->jobs->history('job_id', [
+    'order' => 'asc',   // 'asc' (default, oldest first) or 'desc'
+    'limit' => 100,     // 1-500, default 100
+    'offset' => 0,
+]);
+
+foreach ($history->events as $event) {
+    // JobHistoryEvent: id, jobId, eventType, workerId, details (any JSON), createdAt
+    echo "{$event->createdAt} {$event->eventType}\n";
+}
+$history->hasMore; // from the API's X-Has-More header
+```
+
+A job of another organization, or one in a queue outside the API key's scope,
+is a `NotFoundError`.
 
 ### Get Job
 
@@ -129,9 +160,12 @@ $result = $client->jobs->claim([
 $client->jobs->complete('job_id', [
     'workerId' => 'worker-1',
     'result' => ['success' => true],
-    'leaseId' => $claimedJob->leaseId, // fencing token from claim, when present
+    'leaseId' => $claimedJob->leaseId, // required: the lease id the claim returned
 ]);
 ```
+
+`complete`, `fail` and `heartbeat` require the claimed job's `leaseId`; without
+it the API answers 422 (`ValidationError`, ``Field `lease_id` is required``).
 
 `complete`, `fail` and `heartbeat` are retried on network errors, timeouts and 5xx
 (bounded by the client's `RetryConfig`); they are fenced by the lease. A retry of a
@@ -143,7 +177,7 @@ $client->jobs->complete('job_id', [
 $client->jobs->fail('job_id', [
     'workerId' => 'worker-1',
     'error' => 'Something went wrong',
-    'leaseId' => $claimedJob->leaseId, // fencing token from claim, when present
+    'leaseId' => $claimedJob->leaseId, // required: the lease id the claim returned
 ]);
 ```
 
@@ -157,7 +191,7 @@ the middle of a multi-byte character).
 $client->jobs->heartbeat('job_id', [
     'workerId' => 'worker-1',
     'leaseDurationSecs' => 300,
-    'leaseId' => $claimedJob->leaseId, // fencing token from claim, when present
+    'leaseId' => $claimedJob->leaseId, // required: the lease id the claim returned
 ]);
 ```
 
@@ -167,7 +201,7 @@ $client->jobs->heartbeat('job_id', [
 act on every queue of the organization when no queue is named.
 
 ```php
-// List DLQ jobs
+// List DLQ jobs (same filters as jobs->list() except status; hasMore from X-Has-More)
 $dlqJobs = $client->jobs->dlq->list([
     'queue' => 'my-queue',
     'limit' => 50,
@@ -224,8 +258,14 @@ $client->queues->updateConfig('my-queue', [
 ```php
 $stats = $client->queues->getStats('my-queue');
 echo "Pending: {$stats->pending}\n";
-echo "Processing: {$stats->processing}\n";
+echo "Processing: {$stats->claimed}\n";
+echo "Dead-lettered now: {$stats->deadletter}\n";
+echo "Completed / failed (24 h): {$stats->completed} / {$stats->failed}\n";
+echo "Oldest pending job: " . ($stats->maxJobAgeSeconds ?? 0) . " s\n";
 ```
+
+`$total`, `$cancelled`, `$scheduled` and `$throughput` have no API counterpart
+and are always 0 (deprecated, kept for compatibility).
 
 ### Pause Queue
 
@@ -366,14 +406,29 @@ $workflows = $client->workflows->list([
 ### Create Webhook
 
 ```php
+use Spooled\Types\WebhookEvent;
+use Spooled\Types\WebhookFormat;
+
 $webhook = $client->webhooks->create([
     'name' => 'Slack Notifications',
     'url' => 'https://hooks.slack.com/...',
-    'events' => ['job.completed', 'job.failed'],
+    'events' => ['job.completed', 'job.failed', WebhookEvent::JOB_DEADLETTERED],
     'secret' => 'hmac-secret',
     'enabled' => true,
+    'format' => WebhookFormat::SLACK,   // 'json' (default), 'slack', 'discord' or 'teams'
 ]);
+echo $webhook->format; // "slack"
 ```
+
+Events: `job.created`, `job.started`, `job.completed`, `job.failed`,
+`job.cancelled`, `job.deadlettered`, `job.retried`, `queue.paused`,
+`queue.resumed`, `worker.registered`, `worker.deregistered`,
+`schedule.triggered`, `workflow.completed`, `workflow.failed` (one
+`WebhookEvent` case each; strings work the same). `format` decides the delivery
+body: `json` is the signed envelope (`id`, `event`, `created_at`, `data`);
+`slack`, `discord` and `teams` send the message that service's incoming webhook
+URL accepts. An unknown event or format is a `ValidationError` (400).
+`Webhook::$events` and `Webhook::$format` are read back as plain strings.
 
 ### List Webhooks
 
@@ -386,6 +441,7 @@ $webhooks = $client->webhooks->list();
 ```php
 $wh = $client->webhooks->get('webhook_id');
 $client->webhooks->update('webhook_id', ['enabled' => false]);
+$client->webhooks->update('webhook_id', ['format' => 'teams', 'events' => ['workflow.failed']]);
 $client->webhooks->delete('webhook_id');
 ```
 
@@ -462,7 +518,13 @@ $workers = $client->workers->list();
 
 ```php
 $worker = $client->workers->get('worker_id');
+echo "{$worker->jobsProcessed} completed, {$worker->jobsFailed} failed\n";
 ```
+
+`jobsProcessed` counts jobs the worker completed; `jobsFailed` counts the
+failures it reported (each retry it caused and each dead-letter; jobs released
+by a lease-expiry sweep are not counted). `workers->list()` carries both too.
+Both are null on a registration response.
 
 ### Register Worker
 
@@ -701,7 +763,7 @@ $metrics = $client->metrics->get();
 // Raw Prometheus metrics text
 ```
 
-These are the service's own operator-level metrics, not per-tenant metrics: Spooled has no tenant-facing Prometheus endpoint or alert rules. Self-hosters scrape this endpoint.
+These are the service's own operator-level metrics, not per-tenant metrics: Spooled has no tenant-facing Prometheus endpoint or alert rules. Self-hosters scrape this endpoint. When the server sets `METRICS_TOKEN` (Spooled Cloud does), `/metrics` takes only that token and answers 401 to an API key.
 
 ---
 
@@ -770,6 +832,28 @@ $result = $client->ingest->custom(
 );
 // $result->jobId, $result->queueName, $result->status
 ```
+
+### Inbound Webhook Log
+
+```php
+$log = $client->ingest->listDeliveries([
+    'status' => 'created',          // 'created' or 'duplicate'
+    'since' => new DateTimeImmutable('-1 hour'), // RFC 3339 string or DateTimeInterface
+    'queue' => 'custom_events',     // only entries whose job went to this queue
+    'limit' => 50,                  // 1-100, default 50
+    'offset' => 0,
+]);
+
+foreach ($log->deliveries as $delivery) {
+    // InboundWebhookDelivery: id, provider, eventType, matchedQueue, jobId, status, createdAt
+    echo "{$delivery->createdAt} {$delivery->eventType} -> {$delivery->jobId}\n";
+}
+```
+
+`GET /webhooks/deliveries` lists the custom webhook requests the API accepted,
+newest first, without payloads or signatures. It is organization-wide, so a
+queue-scoped API key gets an `AuthorizationError` (403). `jobId` and `status`
+are null for entries recorded before backend 0.1.122.
 
 ### GitHub and Stripe
 

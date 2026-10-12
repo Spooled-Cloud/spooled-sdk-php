@@ -77,7 +77,7 @@ For every claimed job, the worker:
 1. Starts an isolated renewal child before invoking the handler. The child runs in its own process group, so a SIGTERM/SIGINT sent to the worker's whole group (Supervisor `stopasgroup`, Ctrl-C) does not stop renewal while the job drains.
 2. Renews after `leaseDuration * heartbeatFraction` using a fresh post-fork HTTP transport with retries disabled and a timeout bounded by the remaining lease. If a claim ever returns more than one job, the jobs waiting behind the running one are renewed too.
 3. Sends the worker heartbeat every `heartbeatInterval` from the same child. The scheduler marks a worker offline after two minutes without one and releases its jobs, so a long handler would otherwise get a healthy, busy worker declared dead. A heartbeat that cannot be sent never disturbs the job.
-4. Includes the immutable `leaseId` from the claim on heartbeat, completion, and failure requests when the server supplied one.
+4. Includes the immutable `leaseId` from the claim on heartbeat, completion, and failure requests. The API requires it on all three (422 without it); call `jobs->complete()`/`fail()`/`heartbeat()` yourself only with the `leaseId` of the claimed job.
 5. Stops and reaps the renewal child before settling the job, preventing renewal from racing completion/failure or touching a replacement lease.
 6. Cancels the active execution and emits `error` if the lease is terminally lost.
 

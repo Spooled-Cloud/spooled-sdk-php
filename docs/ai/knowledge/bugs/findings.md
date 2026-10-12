@@ -72,3 +72,13 @@
 | FESF-01/02 | P1/P2 | ~~`dlq->retry/purge/list` and `bulkEnqueue` ignored `queue`; DLQ purge/retry hit every queue~~ **FIXED 1.3.0** — `queue` mapped to `queueName` | `src/Resources/JobsResource.php` |
 | W2-QUOTA | P2 | ~~429 `QUOTA_EXCEEDED` retried with long sleeps and tripped the circuit breaker, blocking acks~~ **FIXED 1.3.0** — `RateLimitError::isQuotaExceeded()` | `src/Errors/RateLimitError.php`; `src/Util/{RetryHandler,CircuitBreaker}.php` |
 | W2-TIMEOUT | P2 | ~~Worker ignored the job's `timeout_seconds`~~ **FIXED 1.3.0** — SIGALRM aborts the handler, job failed `Job timeout exceeded`, `job:timeout` event | `src/Worker/SpooledWorker.php` |
+| W9-01 | P2 | ~~gRPC `fail(['retry' => false])` never put field 4 on the wire (stub predated `optional bool retry`), so the job was retried, not dead-lettered~~ **FIXED 1.4.0 - stubs regenerated; live: dead-letters with maxRetries 3** | `src/Grpc/Stubs; src/Grpc/SpooledGrpcClient.php` |
+| W9-02 | P3 | ~~gRPC register could not send the stable `worker_id` (field 7)~~ **FIXED 1.4.0** | `src/Grpc/SpooledGrpcClient.php` |
+| W9-03 | P3 | ~~`JobList::hasMore` guessed from a full page and ignored `X-Has-More`~~ **FIXED 1.4.0** | `src/Resources/JobsResource.php; src/Types/Job.php` |
+| W9-04 | P3 | ~~`X-RateLimit-*` dropped on 2xx; README said the API sends none~~ **FIXED 1.4.0 - getLastRateLimit()** | `src/Http/HttpClient.php; src/Types/RateLimitInfo.php` |
+| W9-05 | P3 | ~~Wave-8 API not typed: history, inbound log, worker counters, webhook format, list filters~~ **FIXED 1.4.0** | `src/Resources/{Jobs,WebhookIngestion,Webhooks}Resource.php; src/Types` |
+| W9-06 | P3 | ~~README realtime example read camelCase `jobId`; SSE data is snake_case~~ **FIXED 1.4.0** | `README.md` |
+| W9-07 | P3 | ~~leaseId documented as optional for complete/fail/heartbeat; the API requires it (422)~~ **FIXED 1.4.0 - docs only** | `src/Resources/JobsResource.php; docs` |
+| W9-08 | P3 | ~~QueueStats total/cancelled/scheduled/throughput and Job scheduleId/workerName never populated~~ **FIXED 1.4.0 - documented, deprecated; deadletter/maxJobAgeSeconds mapped** | `src/Types/{Queue,Job}.php` |
+| W9-09 | P3 | ~~scripts/test-local.php: stale lease/key/metrics/payload checks and production-unsafe tests; test-production.php silent on Windows~~ **FIXED 1.4.0 - 134/144 pass on production, unsafe tests opt-in** | `scripts/test-local.php; scripts/test-production.php` |
+| W9-10 | P3 | ~~scripts/generate-grpc.php rewrote the stub namespace to Spooled\Grpc\Stubs (breaks the Spooled\V1 autoload) and needed `which`~~ **FIXED 1.4.0** | `scripts/generate-grpc.php` |
