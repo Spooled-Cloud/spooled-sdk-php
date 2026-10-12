@@ -39,11 +39,16 @@ declare(strict_types=1);
  *                                   organization's inbound webhook token (breaks
  *                                   existing senders). Local/dev servers only.
  *
- * Every queue the suite touches starts with its run prefix (`test-<time>-...`),
- * and the start-up cleanup cancels only jobs in such `test-` queues.
+ * Everything the suite creates (queues, schedules, workflows) is named after its
+ * run prefix (`test-<unix time>-<8 hex>-...`). The clean-ups cancel jobs, cancel
+ * workflows and delete schedules only when they carry such a name (for a
+ * schedule: its name and its queue), so other objects of the organization,
+ * including ones named just `test-...`, are never touched. See
+ * scripts/lib/suite-cleanup.php.
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';
+require_once __DIR__ . '/lib/suite-cleanup.php';
 
 use Spooled\Config\ClientOptions;
 use Spooled\Errors\AuthenticationError;
@@ -182,11 +187,6 @@ class TestHarness
 // Utilities
 // ─────────────────────────────────────────────────────────────────────────────
 
-function generateTestId(): string
-{
-    return 'test-' . time() . '-' . substr(md5((string) mt_rand()), 0, 8);
-}
-
 function assertTrue(bool $condition, string $message): void
 {
     if (!$condition) {
@@ -266,22 +266,9 @@ function cleanupOldJobs(SpooledClient $client, TestHarness $harness, bool $verbo
 
     try {
         // Cancel pending/processing jobs of earlier runs of this suite only:
-        // their queues start with `test-`. Other queues of the organization
-        // are never touched.
-        $jobs = $client->jobs->list(['limit' => 100, 'status' => ['pending', 'processing', 'scheduled'], 'q' => 'test-']);
-        $cancelled = 0;
-
-        foreach ($jobs->jobs ?? [] as $job) {
-            if (str_starts_with($job->queueName, 'test-')
-                && in_array($job->status, ['pending', 'processing', 'scheduled'], true)) {
-                try {
-                    $client->jobs->cancel($job->id);
-                    $cancelled++;
-                } catch (\Throwable $e) {
-                    // Ignore errors - job might have completed or been deleted
-                }
-            }
-        }
+        // their queues start with a run prefix. Other queues of the
+        // organization are never touched.
+        $cancelled = cancelSuiteJobs($client);
 
         if ($verbose && $cancelled > 0) {
             echo "   Cancelled {$cancelled} old jobs\n";
@@ -295,39 +282,8 @@ function cleanupOldJobs(SpooledClient $client, TestHarness $harness, bool $verbo
     }
 }
 
-function cleanupWorkflows(SpooledClient $client): void
-{
-    try {
-        $workflows = $client->workflows->list(['limit' => 100]);
-        foreach ($workflows->workflows ?? $workflows as $workflow) {
-            if (!in_array($workflow->status ?? '', ['completed', 'failed', 'cancelled'], true)) {
-                try {
-                    $client->workflows->cancel($workflow->id);
-                } catch (\Throwable $e) {
-                    // Ignore
-                }
-            }
-        }
-    } catch (\Throwable $e) {
-        // Ignore
-    }
-}
-
-function cleanupSchedules(SpooledClient $client): void
-{
-    try {
-        $schedules = $client->schedules->list(['limit' => 100]);
-        foreach ($schedules->schedules ?? $schedules as $schedule) {
-            try {
-                $client->schedules->delete($schedule->id);
-            } catch (\Throwable $e) {
-                // Ignore
-            }
-        }
-    } catch (\Throwable $e) {
-        // Ignore
-    }
-}
+// cleanupWorkflows() and cleanupSchedules() are in lib/suite-cleanup.php. They
+// only cancel workflows and delete schedules of this suite's own runs.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Test Suites

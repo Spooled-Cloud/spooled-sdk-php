@@ -926,13 +926,16 @@ API_KEY=sp_live_... composer scripts:test-production
 composer scripts:verify-production
 ```
 
-Both scripts work only in queues whose names start with the run's `test-`
-prefix, and the start-up cleanup cancels only jobs in such queues. Tests with
-side effects beyond that (organization sign-up, an email login start, a
-billing portal session, regenerating the inbound webhook token) run only with
-`RUN_UNSAFE_TESTS=1`, which `test-production` always turns off. Other
-settings: `SKIP_GRPC`, `SKIP_STRESS`, `VERBOSE`, `METRICS_TOKEN` (for
-`/metrics`), `ADMIN_API_KEY` and `TEST_RESULTS_FILE`.
+Both scripts name everything they create (queues, schedules, workflows) after
+the run's prefix, `test-<unix time>-<8 hex>-`. The clean-ups cancel jobs,
+cancel workflows and delete schedules only when they carry such a name (for a
+schedule, both its name and its queue), so the organization's other jobs,
+schedules and workflows, including ones whose names merely start with `test-`,
+are never touched. Tests with side effects beyond that (organization sign-up,
+an email login start, a billing portal session, regenerating the inbound
+webhook token) run only with `RUN_UNSAFE_TESTS=1`, which `test-production`
+always turns off. Other settings: `SKIP_GRPC`, `SKIP_STRESS`, `VERBOSE`,
+`METRICS_TOKEN` (for `/metrics`), `ADMIN_API_KEY` and `TEST_RESULTS_FILE`.
 
 ## License
 

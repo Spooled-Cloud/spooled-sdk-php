@@ -42,7 +42,15 @@ are additive. Existing calls keep working, and responses parse as before.
     `RUN_UNSAFE_TESTS=1`, and `test-production` forces that off. These tests
     are organization sign-up, an email login start, a billing portal session
     and regenerating the inbound webhook token.
-  - The start-up cleanup cancels only jobs in the suite's own `test-` queues.
+  - The clean-ups only touch what a run of the suite created, recognised by
+    the run prefix `test-<unix time>-<8 hex>-`. Before, the schedule and
+    workflow tests first deleted up to 100 schedules and cancelled up to 100
+    unfinished workflows of the whole organization, whatever their name. Now
+    a schedule is deleted only when its name and its queue carry a run
+    prefix, and a workflow is cancelled only when its name does. The start-up
+    cleanup cancels only jobs in queues with a run prefix, so a queue of the
+    organization named `test-...` is no longer touched either. The helpers
+    are in `scripts/lib/suite-cleanup.php` and have unit tests.
   - The banner no longer prints part of the API key.
 - `scripts/test-production.php` prints output on Windows. It relayed the
   child's output with `stream_select()` on pipes, which never returns data there.
