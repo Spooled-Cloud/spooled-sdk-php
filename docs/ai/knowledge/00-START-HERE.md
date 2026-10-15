@@ -1,3 +1,3 @@
 # Spooled PHP SDK — Agent Knowledge Base
 
-`Spooled\Version::VERSION` **1.4.0**; User-Agent `spooled-php/1.4.0`. Packagist via git tag. Publish: `docs/PUBLISHING.md`.
+`Spooled\Version::VERSION` **1.5.0**; User-Agent `spooled-php/1.5.0`. Packagist via git tag. Publish: `docs/PUBLISHING.md`.

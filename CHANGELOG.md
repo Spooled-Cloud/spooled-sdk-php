@@ -5,6 +5,22 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-10-15
+
+Workflow job timeouts are typed in both directions, in seconds. Everything is
+additive: the new constructor arguments are optional and trailing, so existing
+calls and responses work as before.
+
+### Added
+
+- `WorkflowJob::$timeoutSeconds`. `GET /workflows/{id}` reports each job's
+  timeout as `timeout_ms`, which `WorkflowJob` dropped. It is now the API's
+  `timeout_ms` converted to whole seconds (rounded down, never below 1), or
+  `null` when the API omits it.
+- `WorkflowJobDefinition::$timeoutSeconds`, sent as `timeout_seconds`. A step
+  created through the definition had no way to set its timeout and always got the
+  queue default; `null` still leaves the field out, so the default applies.
+
 ## [1.4.0] - 2026-10-12
 
 Brings the SDK in line with backend 0.1.122: the gRPC stubs match the current
