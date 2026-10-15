@@ -150,6 +150,11 @@ final readonly class WorkflowJobDefinition
         public int $maxRetries = 3,
         /** @var array<string, mixed>|null */
         public ?array $metadata = null,
+        /**
+         * Timeout in seconds (API `timeout_seconds`). Null omits the field so the
+         * queue default applies.
+         */
+        public ?int $timeoutSeconds = null,
     ) {
     }
 
@@ -167,6 +172,7 @@ final readonly class WorkflowJobDefinition
             'dependsOn' => $this->dependencies,
             'priority' => $this->priority,
             'maxRetries' => $this->maxRetries,
+            'timeoutSeconds' => $this->timeoutSeconds,
         ], fn ($v) => $v !== null);
     }
 }
@@ -195,6 +201,10 @@ final readonly class WorkflowJob
         public ?string $createdAt,
         public ?string $startedAt,
         public ?string $completedAt,
+        /**
+         * Timeout in seconds. Detail jobs report `timeout_ms`; null when the API omitted it.
+         */
+        public ?int $timeoutSeconds = null,
     ) {
     }
 
@@ -223,7 +233,25 @@ final readonly class WorkflowJob
             createdAt: isset($data['createdAt']) ? (string) $data['createdAt'] : null,
             startedAt: isset($data['startedAt']) ? (string) $data['startedAt'] : null,
             completedAt: isset($data['completedAt']) ? (string) $data['completedAt'] : null,
+            timeoutSeconds: self::timeoutSecondsFrom($data),
         );
+    }
+
+    /**
+     * Detail jobs carry `timeout_ms` (`timeoutMs` after the HTTP client).
+     * The rest of this SDK speaks seconds, matching the Node and Python
+     * clients: whole seconds, and never zero.
+     *
+     * @param array<string, mixed> $data
+     */
+    private static function timeoutSecondsFrom(array $data): ?int
+    {
+        $ms = $data['timeoutMs'] ?? $data['timeout_ms'] ?? null;
+        if (!is_int($ms) && !is_float($ms)) {
+            return null;
+        }
+
+        return (int) max(1, (int) floor($ms / 1000));
     }
 
     /**

@@ -10,6 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Spooled\Http\HttpClient;
 use Spooled\Resources\WorkflowJobsSubResource;
 use Spooled\Resources\WorkflowsResource;
+use Spooled\Types\WorkflowJobDefinition;
 use Spooled\Util\Casing;
 
 #[CoversClass(WorkflowsResource::class)]
@@ -58,6 +59,45 @@ final class WorkflowsResourceTest extends TestCase
         $this->assertSame('ETL Pipeline', $workflow->name);
         $this->assertSame(2, $workflow->totalJobs);
         $this->assertSame('wf_1', $workflow->id);
+    }
+
+    #[Test]
+    public function create_sends_timeout_seconds_from_a_job_definition(): void
+    {
+        $captured = null;
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->method('post')->willReturnCallback(
+            function (...$args) use (&$captured): array {
+                $captured = $args[1] ?? null;
+
+                return [
+                    'workflowId' => 'wf_1',
+                    'jobIds' => [
+                        ['key' => 'charge', 'jobId' => 'job_1'],
+                    ],
+                    'status' => 'pending',
+                ];
+            },
+        );
+
+        (new WorkflowsResource($httpClient))->create([
+            'name' => 'Checkout',
+            'jobs' => [
+                (new WorkflowJobDefinition(
+                    name: 'charge',
+                    queue: 'payments',
+                    payload: ['amount' => 10],
+                    timeoutSeconds: 120,
+                ))->toArray(),
+            ],
+        ]);
+
+        $this->assertIsArray($captured);
+        $body = Casing::keysToSnakeCase($captured);
+
+        // The HTTP layer snake-cases timeoutSeconds. Without it the step is
+        // stored at the queue default.
+        $this->assertSame(120, $body['jobs'][0]['timeout_seconds']);
     }
 
     #[Test]
@@ -127,6 +167,37 @@ final class WorkflowsResourceTest extends TestCase
         $this->assertTrue($jobs[0]->result);
         $this->assertSame(2, $jobs[0]->retryCount);
         $this->assertSame('boom', $jobs[0]->error);
+    }
+
+    #[Test]
+    public function list_jobs_maps_timeout_ms_to_seconds(): void
+    {
+        $httpClient = $this->createMock(HttpClient::class);
+        $httpClient->method('get')->willReturn([
+            'id' => 'wf_1',
+            'name' => 'ETL',
+            'status' => 'failed',
+            'progress' => ['total' => 1, 'completed' => 0, 'failed' => 1, 'pending' => 0, 'processing' => 0],
+            'jobs' => [
+                [
+                    'id' => 'job_1',
+                    'queue' => 'etl',
+                    'payload' => ['step' => 'extract'],
+                    'status' => 'failed',
+                    'attempt' => 1,
+                    'maxRetries' => 3,
+                    'timeoutMs' => 120000,
+                    'error' => ['type' => 'JobError', 'message' => 'upstream 502'],
+                    'workflowId' => 'wf_1',
+                ],
+            ],
+            'dependencies' => [],
+        ]);
+
+        $jobs = (new WorkflowsResource($httpClient))->jobs->list('wf_1');
+
+        $this->assertSame(120, $jobs[0]->timeoutSeconds);
+        $this->assertSame('upstream 502', $jobs[0]->error);
     }
 
     #[Test]

@@ -8,8 +8,12 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
 use Spooled\Types\Workflow;
+use Spooled\Types\WorkflowJob;
+use Spooled\Types\WorkflowJobDefinition;
 
 #[CoversClass(Workflow::class)]
+#[CoversClass(WorkflowJob::class)]
+#[CoversClass(WorkflowJobDefinition::class)]
 final class WorkflowTest extends TestCase
 {
     #[Test]
@@ -68,5 +72,61 @@ final class WorkflowTest extends TestCase
         ]);
 
         $this->assertSame(3, $got->metadata);
+    }
+
+    #[Test]
+    public function job_from_array_maps_timeout_ms_to_seconds(): void
+    {
+        $failed = WorkflowJob::fromArray([
+            'id' => 'job_1',
+            'workflowId' => 'wf_1',
+            'queue' => 'etl',
+            'status' => 'failed',
+            'timeoutMs' => 120000,
+            'error' => ['type' => 'JobError', 'message' => 'upstream 502'],
+        ]);
+        $fractional = WorkflowJob::fromArray([
+            'id' => 'job_2',
+            'timeout_ms' => 1500,
+        ]);
+        $subSecond = WorkflowJob::fromArray([
+            'id' => 'job_3',
+            'timeoutMs' => 999,
+        ]);
+        $absent = WorkflowJob::fromArray([
+            'id' => 'job_4',
+        ]);
+        $notANumber = WorkflowJob::fromArray([
+            'id' => 'job_5',
+            'timeoutMs' => '120000',
+        ]);
+
+        // 120s was stored; without this read the detail came back with no timeout.
+        $this->assertSame(120, $failed->timeoutSeconds);
+        $this->assertSame('upstream 502', $failed->error);
+        // Same conversion as the Node and Python clients: floor, and never 0.
+        $this->assertSame(1, $fractional->timeoutSeconds);
+        $this->assertSame(1, $subSecond->timeoutSeconds);
+        $this->assertNull($absent->timeoutSeconds);
+        $this->assertNull($notANumber->timeoutSeconds);
+    }
+
+    #[Test]
+    public function job_definition_sends_timeout_seconds_and_omits_it_when_unset(): void
+    {
+        $withTimeout = new WorkflowJobDefinition(
+            name: 'charge',
+            queue: 'payments',
+            payload: ['amount' => 10],
+            timeoutSeconds: 120,
+        );
+        $withoutTimeout = new WorkflowJobDefinition(
+            name: 'charge',
+            queue: 'payments',
+            payload: ['amount' => 10],
+        );
+
+        $this->assertSame(120, $withTimeout->toArray()['timeoutSeconds']);
+        $this->assertArrayNotHasKey('timeoutSeconds', $withoutTimeout->toArray());
     }
 }
