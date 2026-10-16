@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Spooled\Realtime;
 
+use Closure;
 use JsonException;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
+use ReflectionFunction;
 use RuntimeException;
 use Throwable;
 
@@ -40,6 +42,31 @@ final class WebSocketClient
         'Error' => 'error',
     ];
 
+    /**
+     * A connection that lived this long (seconds) counts as healthy: only then
+     * is the reconnect backoff reset. Resetting on every successful open meant
+     * a server that accepts and immediately closes was retried for as long as
+     * the process ran.
+     */
+    private const STABLE_CONNECTION_SECONDS = 30.0;
+
+    /**
+     * Connections in a row that opened and then closed before
+     * {@see self::STABLE_CONNECTION_SECONDS} after which the client stops
+     * dialing. A server that accepts and then closes (close 1011, the event
+     * channel could not be opened) would otherwise loop forever. Connect
+     * failures (the server is down) do not count: an outage of any length
+     * keeps backing off and reconnects when the server is back.
+     */
+    private const MAX_RECONNECT_ATTEMPTS = 10;
+
+    /**
+     * WebSocket close code 1008 (policy violation). The server uses it when the
+     * access token expired or authorization was revoked, and it means that
+     * token must not be presented again.
+     */
+    private const CLOSE_DO_NOT_REUSE_TOKEN = 1008;
+
     private readonly LoggerInterface $logger;
 
     private readonly string $wsUrl;
@@ -53,7 +80,16 @@ final class WebSocketClient
      * a long-lived connection loop never presents an expired token; the caller
      * decides how the token is minted and cached.
      *
-     * @var callable(): ?string|null
+     * Close 1008 calls it with `true` when the callable accepts an argument.
+     * That asks the caller to drop a cached JWT and log in with the API key:
+     * a session can be revoked while the cached token is still inside its
+     * lifetime, and treating the repeated string as terminal would end
+     * auto-reconnect until the cache expired. The fresh token is presented
+     * once. A provider that hands back a token the server already rejected, or
+     * a second close 1008 for that fresh token before the socket has stayed
+     * up, stops the loop. Zero-argument providers are called with no argument.
+     *
+     * @var callable|null
      */
     private readonly mixed $tokenProvider;
 
@@ -66,6 +102,41 @@ final class WebSocketClient
     private int $maxReconnectDelay = 30000;
 
     private int $reconnectAttempts = 0;
+
+    /** Connections in a row that opened and then closed before they were stable. */
+    private int $unstableCloses = 0;
+
+    /** When the current socket opened. Null while disconnected. */
+    private ?float $connectedAt = null;
+
+    /**
+     * The access token actually placed on the last connection URL. Close 1008
+     * rejects this value, not whichever token happens to be configured now.
+     */
+    private ?string $presentedToken = null;
+
+    /**
+     * Tokens the server rejected with close 1008. Each is presented at most
+     * once; a forced refresh may supply a replacement, which is itself
+     * presented once.
+     *
+     * @var array<string, true>
+     */
+    private array $rejectedTokens = [];
+
+    /**
+     * Set by close 1008 so the next resolve asks the provider to mint a new
+     * JWT instead of returning its cached one.
+     */
+    private bool $forceTokenRefresh = false;
+
+    /**
+     * The token presented after that forced refresh. A close 1008 for this
+     * same value, before the socket has stayed up, means the fresh token was
+     * rejected too. Cleared once a connection proves stable, so a later
+     * revocation can refresh again.
+     */
+    private ?string $refreshedToken = null;
 
     /** @var array<string, callable> */
     private array $eventHandlers = [];
@@ -173,6 +244,12 @@ final class WebSocketClient
         // API key is not accepted there; it must first be exchanged for an
         // access token via POST /api/v1/auth/login.
         if ($this->resolveAccessToken() === null) {
+            if ($this->rejectedTokens !== []) {
+                throw new RuntimeException(
+                    'WebSocket authorization failed (close 1008). The rejected access token will not be reused.',
+                );
+            }
+
             $hint = ($this->apiKey !== null && $this->apiKey !== '')
                 ? ' An API key was provided, but the WebSocket endpoint only accepts a JWT;'
                     . ' exchange it for an access token via POST /api/v1/auth/login first.'
@@ -214,6 +291,20 @@ final class WebSocketClient
             return;
         }
 
+        // No token to dial. After close 1008 this means the forced refresh
+        // handed back a token the server already rejected (or there was no
+        // provider to mint one). Stop instead of reconnecting with nothing.
+        if ($this->presentedToken === null) {
+            $this->running = false;
+            $message = $this->rejectedTokens !== []
+                ? 'WebSocket closed with 1008 (token expired or authorization revoked). The rejected access token will not be reused.'
+                : 'WebSocket authentication requires a JWT access token (?token=).';
+            $this->logger->error($message);
+            $this->emit('error', ['error' => new RuntimeException($message)]);
+
+            return;
+        }
+
         $this->logger->info('Connecting to WebSocket');
 
         // Use the shared React event loop and Ratchet client
@@ -223,7 +314,7 @@ final class WebSocketClient
         $connector($url)->then(
             function (\Ratchet\Client\WebSocket $conn): void {
                 $this->connection = $conn;
-                $this->reconnectAttempts = 0;
+                $this->noteConnected();
                 $this->emit('connected', []);
 
                 // Replay pending subscriptions on (re)connect.
@@ -242,7 +333,7 @@ final class WebSocketClient
                     $this->emit('disconnected', ['code' => $code, 'reason' => $reason]);
 
                     if ($this->running) {
-                        $this->scheduleReconnect();
+                        $this->scheduleReconnect($code);
                     }
                 });
             },
@@ -262,6 +353,16 @@ final class WebSocketClient
      */
     public function disconnect(): void
     {
+        // running is cleared before close, so the close handler never reaches
+        // noteDisconnect. A socket that stayed up would otherwise keep its
+        // spent reconnect count, and the next connect() would die after one
+        // more drop. Refill it here, while connectedAt is still known.
+        if ($this->connectionWasStable()) {
+            $this->reconnectAttempts = 0;
+            $this->unstableCloses = 0;
+            $this->refreshedToken = null;
+        }
+        $this->connectedAt = null;
         $this->running = false;
 
         if ($this->connection !== null) {
@@ -349,11 +450,84 @@ final class WebSocketClient
     }
 
     /**
+     * The socket opened. The attempt counter stays as it is: clearing it here
+     * made a server that accepts and then closes straight away reconnect
+     * forever. {@see noteDisconnect()} resets it only after the socket has
+     * stayed up.
+     */
+    private function noteConnected(): void
+    {
+        $this->connectedAt = microtime(true);
+    }
+
+    /**
+     * Account for one dropped or refused connection.
+     *
+     * @return string|null Why reconnecting must stop, or null to schedule another attempt
+     */
+    private function noteDisconnect(?int $closeCode): ?string
+    {
+        // A socket that stayed up earned a fresh attempt budget, and the token
+        // that kept it up is no longer "the fresh token from the last 1008".
+        // A revocation after that is a new event and may refresh again.
+        $stable = $this->connectionWasStable();
+        $opened = $this->connectedAt !== null;
+        if ($stable) {
+            $this->reconnectAttempts = 0;
+            $this->unstableCloses = 0;
+            $this->refreshedToken = null;
+        }
+        $this->connectedAt = null;
+
+        // 1008: this token is done (expired or revoked). Ask the provider to
+        // drop its cache and log in again, then present that fresh token once.
+        // Stop when there is no provider, or when the token we just minted is
+        // rejected before the socket has stayed up.
+        if ($closeCode === self::CLOSE_DO_NOT_REUSE_TOKEN) {
+            if ($this->presentedToken !== null && $this->presentedToken !== '') {
+                $this->rejectedTokens[$this->presentedToken] = true;
+            }
+
+            $freshTokenRejected = !$stable
+                && $this->presentedToken !== null
+                && $this->presentedToken === $this->refreshedToken;
+            if ($freshTokenRejected || $this->tokenProvider === null) {
+                $this->forceTokenRefresh = false;
+
+                return 'WebSocket closed with 1008 (token expired or authorization revoked). The rejected access token will not be reused.';
+            }
+
+            $this->forceTokenRefresh = true;
+        }
+
+        // Every attempt grows the backoff delay; only a socket that opened and
+        // dropped before it was stable counts toward the ceiling.
+        $this->reconnectAttempts++;
+        if ($opened && !$stable) {
+            $this->unstableCloses++;
+            if ($this->unstableCloses > self::MAX_RECONNECT_ATTEMPTS) {
+                return 'WebSocket reconnect stopped after ' . self::MAX_RECONNECT_ATTEMPTS
+                    . ' connections in a row closed right after opening';
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Schedule a reconnection attempt.
      */
-    private function scheduleReconnect(): void
+    private function scheduleReconnect(?int $closeCode = null): void
     {
-        $this->reconnectAttempts++;
+        $stopReason = $this->noteDisconnect($closeCode);
+        if ($stopReason !== null) {
+            $this->running = false;
+            $this->logger->warning($stopReason);
+            $this->emit('error', ['error' => new RuntimeException($stopReason)]);
+
+            return;
+        }
+
         $delay = min(
             $this->reconnectDelay * (2 ** ($this->reconnectAttempts - 1)),
             $this->maxReconnectDelay,
@@ -378,12 +552,16 @@ final class WebSocketClient
      */
     private function buildUrl(): string
     {
+        $token = $this->resolveAccessToken();
+        // Remember which token this URL carries so a later close 1008 rejects
+        // that value, even if the provider has moved on by then.
+        $this->presentedToken = $token;
+
         $url = $this->wsUrl . '/api/v1/ws';
 
         // The backend /ws endpoint authenticates only a JWT in ?token=.
         // connect() guarantees an access token is present; there is no
         // api_key fallback because the endpoint does not accept it.
-        $token = $this->resolveAccessToken();
         if ($token !== null) {
             $url .= '?' . http_build_query(['token' => $token]);
         }
@@ -392,19 +570,74 @@ final class WebSocketClient
     }
 
     /**
+     * The socket has been open long enough to count as healthy.
+     */
+    private function connectionWasStable(): bool
+    {
+        return $this->connectedAt !== null
+            && (microtime(true) - $this->connectedAt) >= self::STABLE_CONNECTION_SECONDS;
+    }
+
+    /**
      * The JWT to present right now: the provider's (fresh each call) when one
-     * is configured, else the static access token.
+     * is configured, else the static access token. A token the server rejected
+     * with close 1008 is skipped. After that close the provider is asked to
+     * mint a replacement first, so a cached copy of the rejected JWT is not
+     * treated as terminal until the replacement has been rejected too.
      */
     private function resolveAccessToken(): ?string
     {
         if ($this->tokenProvider !== null) {
-            $token = ($this->tokenProvider)();
+            $forceRefresh = $this->forceTokenRefresh;
+            $token = $this->callTokenProvider($forceRefresh);
             if (is_string($token) && $token !== '') {
+                if ($forceRefresh) {
+                    $this->forceTokenRefresh = false;
+                    if (isset($this->rejectedTokens[$token])) {
+                        // Asked for a new JWT and got one the server already
+                        // rejected. There is nothing new to dial.
+                        $this->refreshedToken = $token;
+
+                        return null;
+                    }
+                    $this->refreshedToken = $token;
+                } elseif (isset($this->rejectedTokens[$token])) {
+                    return null;
+                }
+
                 return $token;
             }
         }
 
-        return $this->accessToken !== null && $this->accessToken !== '' ? $this->accessToken : null;
+        if (
+            $this->accessToken !== null
+            && $this->accessToken !== ''
+            && !isset($this->rejectedTokens[$this->accessToken])
+        ) {
+            return $this->accessToken;
+        }
+
+        return null;
+    }
+
+    /**
+     * Call the token provider. `true` is passed only when a refresh was
+     * requested and the callable accepts an argument, so existing
+     * zero-argument providers keep their old signature.
+     */
+    private function callTokenProvider(bool $forceRefresh): mixed
+    {
+        $provider = $this->tokenProvider;
+        if (!is_callable($provider)) {
+            return null;
+        }
+
+        $function = new ReflectionFunction(Closure::fromCallable($provider));
+        if ($forceRefresh && $function->getNumberOfParameters() >= 1) {
+            return $function->invoke(true);
+        }
+
+        return $function->invoke();
     }
 
     /**

@@ -262,6 +262,57 @@ final class RealtimeTokenCacheTest extends TestCase
         $this->assertStringEndsWith('?token=' . $second, $this->invokePrivate($ws, 'buildUrl', []));
     }
 
+    #[Test]
+    public function forceRefreshDropsAStillValidCachedJwtAndLogsInAgain(): void
+    {
+        $cached = $this->makeJwt(time() + 3600);
+        $fresh = $this->makeJwt(time() + 7200);
+
+        $http = $this->createMock(HttpClient::class);
+        $http->expects($this->once())
+            ->method('post')
+            ->with('auth/login')
+            ->willReturn(['accessToken' => $fresh, 'expiresIn' => 7200]);
+
+        $client = $this->makeClient($http, new ClientOptions(apiKey: 'sp_test_key'));
+        $this->setPrivate($client, 'cachedRealtimeToken', $cached);
+        $this->setPrivate($client, 'cachedRealtimeTokenExpiresAt', time() + 3600);
+
+        $result = $this->invokePrivate($client, 'exchangeApiKeyForToken', ['sp_test_key', true]);
+
+        $this->assertSame($fresh, $result);
+    }
+
+    #[Test]
+    public function websocketClose1008LogsInAgainWhileTheCachedJwtIsValid(): void
+    {
+        $revoked = $this->makeJwt(time() + 3600);
+        $fresh = $this->makeJwt(time() + 7200);
+
+        $http = $this->createMock(HttpClient::class);
+        $http->expects($this->exactly(2))
+            ->method('post')
+            ->with('auth/login')
+            ->willReturnOnConsecutiveCalls(
+                ['accessToken' => $revoked, 'expiresIn' => 3600],
+                ['accessToken' => $fresh, 'expiresIn' => 7200],
+            );
+
+        $client = $this->makeClient($http, new ClientOptions(apiKey: 'sp_test_key'));
+        $ws = $client->realtime()->ws();
+
+        $this->assertStringEndsWith('?token=' . $revoked, $this->invokePrivate($ws, 'buildUrl', []));
+
+        // Session revoked while the cached JWT is still an hour from expiry.
+        $this->assertNull($this->invokePrivate($ws, 'noteDisconnect', [1008]));
+        $this->assertStringEndsWith('?token=' . $fresh, $this->invokePrivate($ws, 'buildUrl', []));
+
+        // The fresh token is rejected too: stop, and do not log in a third time.
+        $stop = $this->invokePrivate($ws, 'noteDisconnect', [1008]);
+        $this->assertIsString($stop);
+        $this->assertStringContainsString('1008', $stop);
+    }
+
     /**
      * Build a SpooledClient without running its constructor, wiring in a mocked
      * HTTP client and a real AuthResource around it.

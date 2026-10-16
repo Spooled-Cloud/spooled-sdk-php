@@ -274,9 +274,12 @@ final class SpooledClient
      * client: SSE authenticates with the API key (or a JWT you set yourself),
      * and the WebSocket, which accepts only a JWT, gets one minted by exchanging
      * the API key. That JWT is cached privately, refreshed shortly before it
-     * expires, and re-checked on every reconnect. The REST bearer stays the API
-     * key, so a daemon that called realtime() does not start getting 401s when
-     * the short-lived JWT expires. No network call is made until a transport connects.
+     * expires, and re-checked on every reconnect. A WebSocket close 1008 passes
+     * true so the cache is dropped and the API key is logged in again: a
+     * session can be revoked while the JWT is still inside its lifetime. The
+     * REST bearer stays the API key, so a daemon that called realtime() does
+     * not start getting 401s when the short-lived JWT expires. No network call
+     * is made until a transport connects.
      */
     public function realtime(): SpooledRealtime
     {
@@ -287,7 +290,8 @@ final class SpooledClient
         $this->realtimeClient = new SpooledRealtime(
             $this->options,
             $this->logger,
-            wsTokenProvider: fn (): ?string => $this->resolveRealtimeAccessToken(),
+            // Optional argument: true after WebSocket close 1008.
+            wsTokenProvider: fn (bool $forceRefresh = false): ?string => $this->resolveRealtimeAccessToken($forceRefresh),
             accessTokenProvider: fn (): ?string => $this->callerAccessToken(),
         );
 
@@ -313,10 +317,12 @@ final class SpooledClient
      * Determine the JWT to use for the realtime data plane.
      *
      * Preference order:
-     *  1. A JWT the caller supplied is caller-owned and used verbatim.
+     *  1. A JWT the caller supplied is caller-owned and used verbatim. A forced
+     *     refresh does not replace it: the caller owns that credential.
      *  2. Otherwise, if an API key is configured, exchange it for a (cached) JWT.
+     *     `$forceRefresh` drops that cache and logs in again.
      */
-    private function resolveRealtimeAccessToken(): ?string
+    private function resolveRealtimeAccessToken(bool $forceRefresh = false): ?string
     {
         $caller = $this->callerAccessToken();
         if ($caller !== null) {
@@ -325,7 +331,7 @@ final class SpooledClient
 
         $apiKey = $this->options->apiKey;
         if ($apiKey !== null && $apiKey !== '') {
-            return $this->exchangeApiKeyForToken($apiKey);
+            return $this->exchangeApiKeyForToken($apiKey, $forceRefresh);
         }
 
         return null;
@@ -338,11 +344,20 @@ final class SpooledClient
      *
      * The JWT `exp` claim is read by base64-decoding the payload segment without
      * verifying the signature; the token is considered expired
-     * self::TOKEN_EXPIRY_LEEWAY_SECONDS early. A fresh login is performed only
-     * when no JWT is cached or the cached one is at/near expiry.
+     * self::TOKEN_EXPIRY_LEEWAY_SECONDS early. A fresh login is performed when
+     * no JWT is cached, the cached one is at or near expiry, or `$forceRefresh`
+     * is set (WebSocket close 1008: the session was revoked while the JWT was
+     * still inside its lifetime).
      */
-    private function exchangeApiKeyForToken(string $apiKey): string
+    private function exchangeApiKeyForToken(string $apiKey, bool $forceRefresh = false): string
     {
+        if ($forceRefresh) {
+            // The server rejected this JWT before its exp. Leaving it cached
+            // would present the same string again and the reconnect would stop.
+            $this->cachedRealtimeToken = null;
+            $this->cachedRealtimeTokenExpiresAt = null;
+        }
+
         if (
             $this->cachedRealtimeToken !== null
             && $this->cachedRealtimeTokenExpiresAt !== null

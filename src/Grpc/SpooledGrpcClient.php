@@ -410,8 +410,13 @@ final class GrpcQueueResource
      * and `result`. `result` travels as a `google.protobuf.Struct`: a JSON
      * object only, and integers beyond 2^53 lose precision (REST keeps them).
      *
+     * A lost or mismatched lease is {@see LeaseLostException} (a
+     * RuntimeException with `errorCode` `LEASE_EXPIRED`). Other statuses stay
+     * a plain `RuntimeException`.
+     *
      * @param array<string, mixed> $params
      * @return array<string, mixed>
+     * @throws LeaseLostException when the lease expired or the lease id does not match
      */
     public function complete(array $params): array
     {
@@ -439,9 +444,7 @@ final class GrpcQueueResource
 
         [$response, $status] = $client->Complete($request, $metadata, $this->client->getCallOptions())->wait();
 
-        if ($status->code !== \Grpc\STATUS_OK) {
-            throw new RuntimeException("gRPC error: {$status->details}", $status->code);
-        }
+        $this->throwUnlessOk($status);
 
         return [
             'success' => $response->getSuccess(),
@@ -456,8 +459,12 @@ final class GrpcQueueResource
      * `error`, and `retry`. `retry` omitted or true retries the job according to
      * its `max_retries`; `retry => false` moves it to the dead-letter queue now.
      *
+     * A lost or mismatched lease is {@see LeaseLostException}, same as
+     * {@see complete()}.
+     *
      * @param array<string, mixed> $params
      * @return array<string, mixed>
+     * @throws LeaseLostException when the lease expired or the lease id does not match
      */
     public function fail(array $params): array
     {
@@ -486,9 +493,7 @@ final class GrpcQueueResource
 
         [$response, $status] = $client->Fail($request, $metadata, $this->client->getCallOptions())->wait();
 
-        if ($status->code !== \Grpc\STATUS_OK) {
-            throw new RuntimeException("gRPC error: {$status->details}", $status->code);
-        }
+        $this->throwUnlessOk($status);
 
         return [
             'willRetry' => $response->getWillRetry(),
@@ -532,8 +537,13 @@ final class GrpcQueueResource
      * Params: `jobId`, `workerId`, `leaseId` (the `leaseId` the dequeue
      * returned) and `extensionSecs`.
      *
+     * A lost or mismatched lease is {@see LeaseLostException}, same as
+     * {@see complete()}. The REST worker
+     * stops the running handler on that error and does not settle the job.
+     *
      * @param array<string, mixed> $params
      * @return array<string, mixed>
+     * @throws LeaseLostException when the lease expired or the lease id does not match
      */
     public function renewLease(array $params): array
     {
@@ -556,14 +566,48 @@ final class GrpcQueueResource
 
         [$response, $status] = $client->RenewLease($request, $metadata, $this->client->getCallOptions())->wait();
 
-        if ($status->code !== \Grpc\STATUS_OK) {
-            throw new RuntimeException("gRPC error: {$status->details}", $status->code);
-        }
+        $this->throwUnlessOk($status);
 
         return [
             'success' => $response->getSuccess(),
             'newExpiresAt' => $response->getNewExpiresAt()?->getSeconds(),
         ];
+    }
+
+    /**
+     * Unary Complete, Fail, and RenewLease report a lost lease as
+     * FAILED_PRECONDITION with the message only ("Lease expired", or the REST
+     * lease-mismatch text). Those become {@see LeaseLostException}, a
+     * RuntimeException subclass, so a caller can tell a lost lease apart while
+     * existing `catch (RuntimeException)` handlers keep working. Any other
+     * status, including a FAILED_PRECONDITION that is not a lease loss
+     * ("Job is already completed"), stays a plain RuntimeException.
+     *
+     * @param object $status gRPC status (`code`, `details`)
+     */
+    private function throwUnlessOk(object $status): void
+    {
+        if ($status->code === \Grpc\STATUS_OK) {
+            return;
+        }
+
+        $details = isset($status->details) && is_string($status->details) ? $status->details : '';
+        if ($status->code === \Grpc\STATUS_FAILED_PRECONDITION && self::isLeaseLossDetail($details)) {
+            throw new LeaseLostException('gRPC error: ' . ($details !== '' ? $details : 'Lease expired'), (int) $status->code);
+        }
+
+        throw new RuntimeException('gRPC error: ' . $details, (int) $status->code);
+    }
+
+    /**
+     * Messages the server puts on FAILED_PRECONDITION when this worker no
+     * longer holds the job. Kept in lockstep with the unary classifier in the
+     * backend (`processing_lease_miss` / `LEASE_MISMATCH_MESSAGE`).
+     */
+    private static function isLeaseLossDetail(string $details): bool
+    {
+        return $details === 'Lease expired'
+            || $details === "lease_id does not match the job's current lease; this worker no longer holds it";
     }
 }
 

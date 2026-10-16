@@ -7,8 +7,10 @@ namespace Spooled\Tests\Unit\Realtime;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 use ReflectionMethod;
 use ReflectionProperty;
+use RuntimeException;
 use Spooled\Realtime\WebSocketClient;
 
 /**
@@ -205,5 +207,310 @@ final class WebSocketClientTest extends TestCase
         $property->setValue($client, $fake);
 
         return $fake;
+    }
+
+    #[Test]
+    public function an_accept_then_immediate_close_accumulates_reconnect_attempts(): void
+    {
+        // Opening used to zero the counter, so a server that accepts and then
+        // closes (close 1011, event channel closed) reconnected forever.
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            accessToken: 'jwt-token',
+        );
+
+        $max = $this->constant($client, 'MAX_RECONNECT_ATTEMPTS');
+        for ($attempt = 1; $attempt <= $max; $attempt++) {
+            $this->invoke($client, 'noteConnected');
+            $this->assertNull($this->invoke($client, 'noteDisconnect', 1011));
+            $this->assertSame($attempt, $this->propertyValue($client, 'reconnectAttempts'));
+        }
+
+        $this->invoke($client, 'noteConnected');
+        $stop = $this->invoke($client, 'noteDisconnect', 1011);
+        $this->assertIsString($stop);
+        $this->assertStringContainsString((string) $max, $stop);
+    }
+
+    #[Test]
+    public function a_connection_that_stayed_up_resets_the_reconnect_counter(): void
+    {
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            accessToken: 'jwt-token',
+        );
+        $this->setProperty($client, 'reconnectAttempts', 7);
+        $this->setProperty($client, 'connectedAt', microtime(true) - 31);
+
+        $this->assertNull($this->invoke($client, 'noteDisconnect', 1011));
+        $this->assertSame(1, $this->propertyValue($client, 'reconnectAttempts'));
+    }
+
+    #[Test]
+    public function reconnect_stops_after_the_attempt_ceiling(): void
+    {
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            accessToken: 'jwt-token',
+        );
+        $max = $this->constant($client, 'MAX_RECONNECT_ATTEMPTS');
+        $this->setProperty($client, 'reconnectAttempts', $max);
+        $this->setProperty($client, 'unstableCloses', $max);
+        $this->setProperty($client, 'connectedAt', microtime(true));
+        $this->setProperty($client, 'running', true);
+
+        $error = null;
+        $client->on('error', static function (array $event) use (&$error): void {
+            $error = $event['error'];
+        });
+
+        $this->invoke($client, 'scheduleReconnect', 1011);
+
+        $this->assertFalse($this->propertyValue($client, 'running'));
+        $this->assertInstanceOf(RuntimeException::class, $error);
+        $this->assertStringContainsString((string) $max, $error->getMessage());
+    }
+
+    #[Test]
+    public function connect_failures_back_off_without_ever_stopping(): void
+    {
+        // A backend outage refuses the connection; the socket never opens.
+        // Long-running workers must keep retrying until the server is back.
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            accessToken: 'jwt-token',
+        );
+        $max = $this->constant($client, 'MAX_RECONNECT_ATTEMPTS');
+        for ($attempt = 1; $attempt <= $max * 5; $attempt++) {
+            $this->assertNull($this->invoke($client, 'noteDisconnect', null));
+        }
+        $this->assertSame(0, $this->propertyValue($client, 'unstableCloses'));
+    }
+
+    #[Test]
+    public function close_1008_does_not_reuse_the_rejected_access_token(): void
+    {
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            accessToken: 'dead-jwt',
+        );
+        $this->setProperty($client, 'presentedToken', 'dead-jwt');
+        $this->setProperty($client, 'running', true);
+
+        $error = null;
+        $client->on('error', static function (array $event) use (&$error): void {
+            $error = $event['error'];
+        });
+
+        $this->invoke($client, 'scheduleReconnect', 1008);
+
+        $this->assertFalse($this->propertyValue($client, 'running'));
+        $this->assertInstanceOf(RuntimeException::class, $error);
+        $this->assertStringContainsString('1008', $error->getMessage());
+        $this->assertSame('wss://api.spooled.cloud/api/v1/ws', $this->invoke($client, 'buildUrl'));
+        $this->assertStringNotContainsString('dead-jwt', (string) $this->invoke($client, 'buildUrl'));
+    }
+
+    #[Test]
+    public function close_1008_reconnects_when_the_provider_returns_a_different_token(): void
+    {
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            accessToken: 'dead-jwt',
+            tokenProvider: static fn (): string => 'fresh-jwt',
+        );
+        $this->setProperty($client, 'presentedToken', 'dead-jwt');
+
+        $this->assertNull($this->invoke($client, 'noteDisconnect', 1008));
+        $this->assertSame(
+            'wss://api.spooled.cloud/api/v1/ws?token=fresh-jwt',
+            $this->invoke($client, 'buildUrl'),
+        );
+    }
+
+    #[Test]
+    public function close_1008_does_not_dial_when_the_provider_repeats_the_rejected_token(): void
+    {
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            accessToken: 'also-dead',
+            tokenProvider: static fn (): string => 'dead-jwt',
+        );
+        $this->setProperty($client, 'presentedToken', 'dead-jwt');
+        $this->setProperty($client, 'running', true);
+        $this->invoke($client, 'noteDisconnect', 1008);
+
+        $error = null;
+        $client->on('error', static function (array $event) use (&$error): void {
+            $error = $event['error'];
+        });
+
+        // No socket: the only token left is the one close 1008 rejected.
+        $this->invoke($client, 'openConnection');
+
+        $this->assertFalse($this->propertyValue($client, 'running'));
+        $this->assertInstanceOf(RuntimeException::class, $error);
+        $this->assertStringContainsString('1008', $error->getMessage());
+        $this->assertNull($this->propertyValue($client, 'presentedToken'));
+    }
+
+    #[Test]
+    public function close_1008_forces_a_refresh_and_dials_the_new_token(): void
+    {
+        // A provider that still holds the rejected JWT must be asked to mint
+        // another. Stopping on the repeated string is what stranded a client
+        // whose API-key JWT was cached for the rest of its lifetime.
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            tokenProvider: static function (bool $forceRefresh = false): string {
+                return $forceRefresh ? 'fresh-jwt' : 'dead-jwt';
+            },
+        );
+        $this->setProperty($client, 'presentedToken', 'dead-jwt');
+        $this->setProperty($client, 'running', true);
+
+        $this->assertNull($this->invoke($client, 'noteDisconnect', 1008));
+        $this->assertSame(
+            'wss://api.spooled.cloud/api/v1/ws?token=fresh-jwt',
+            $this->invoke($client, 'buildUrl'),
+        );
+        $this->assertTrue($this->propertyValue($client, 'running'));
+    }
+
+    #[Test]
+    public function close_1008_stops_when_the_fresh_token_is_rejected_too(): void
+    {
+        $refreshes = 0;
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            tokenProvider: static function (bool $forceRefresh = false) use (&$refreshes): string {
+                if ($forceRefresh) {
+                    $refreshes++;
+
+                    return 'fresh-jwt';
+                }
+
+                return 'dead-jwt';
+            },
+        );
+        $this->setProperty($client, 'presentedToken', 'dead-jwt');
+
+        $this->assertNull($this->invoke($client, 'noteDisconnect', 1008));
+        $this->assertSame(
+            'wss://api.spooled.cloud/api/v1/ws?token=fresh-jwt',
+            $this->invoke($client, 'buildUrl'),
+        );
+        $this->assertSame(1, $refreshes);
+
+        // The replacement was rejected before the socket stayed up.
+        $stop = $this->invoke($client, 'noteDisconnect', 1008);
+        $this->assertIsString($stop);
+        $this->assertStringContainsString('1008', $stop);
+
+        // Neither rejected token is presented, and there is no third login.
+        $this->assertSame(
+            'wss://api.spooled.cloud/api/v1/ws',
+            $this->invoke($client, 'buildUrl'),
+        );
+        $this->assertSame(1, $refreshes);
+    }
+
+    #[Test]
+    public function close_1008_after_a_stable_connection_refreshes_again(): void
+    {
+        $issued = 0;
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            tokenProvider: static function (bool $forceRefresh = false) use (&$issued): string {
+                if ($forceRefresh) {
+                    $issued++;
+                }
+
+                return 'jwt-' . $issued;
+            },
+        );
+
+        $this->assertSame(
+            'wss://api.spooled.cloud/api/v1/ws?token=jwt-0',
+            $this->invoke($client, 'buildUrl'),
+        );
+        $this->invoke($client, 'noteConnected');
+        $this->assertNull($this->invoke($client, 'noteDisconnect', 1008));
+        $this->assertSame(
+            'wss://api.spooled.cloud/api/v1/ws?token=jwt-1',
+            $this->invoke($client, 'buildUrl'),
+        );
+
+        // The replacement stayed up, so a later revocation may refresh again.
+        $this->invoke($client, 'noteConnected');
+        $this->setProperty($client, 'connectedAt', microtime(true) - 31);
+        $this->assertNull($this->invoke($client, 'noteDisconnect', 1008));
+        $this->assertSame(
+            'wss://api.spooled.cloud/api/v1/ws?token=jwt-2',
+            $this->invoke($client, 'buildUrl'),
+        );
+    }
+
+    #[Test]
+    public function disconnect_after_a_stable_connection_resets_reconnect_attempts(): void
+    {
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            accessToken: 'jwt-token',
+        );
+        $this->setProperty($client, 'reconnectAttempts', 7);
+        $this->setProperty($client, 'connectedAt', microtime(true) - 31);
+        $this->setProperty($client, 'running', true);
+
+        $client->disconnect();
+
+        $this->assertSame(0, $this->propertyValue($client, 'reconnectAttempts'));
+        $this->assertFalse($this->propertyValue($client, 'running'));
+        $this->assertNull($this->propertyValue($client, 'connectedAt'));
+    }
+
+    #[Test]
+    public function disconnect_before_the_connection_is_stable_keeps_reconnect_attempts(): void
+    {
+        $client = new WebSocketClient(
+            wsUrl: 'wss://api.spooled.cloud',
+            accessToken: 'jwt-token',
+        );
+        $this->setProperty($client, 'reconnectAttempts', 7);
+        $this->setProperty($client, 'connectedAt', microtime(true));
+        $this->setProperty($client, 'running', true);
+
+        $client->disconnect();
+
+        $this->assertSame(7, $this->propertyValue($client, 'reconnectAttempts'));
+        $this->assertFalse($this->propertyValue($client, 'running'));
+    }
+
+    private function invoke(WebSocketClient $client, string $method, mixed ...$args): mixed
+    {
+        $reflection = new ReflectionMethod($client, $method);
+        $reflection->setAccessible(true);
+
+        return $reflection->invoke($client, ...$args);
+    }
+
+    private function setProperty(WebSocketClient $client, string $name, mixed $value): void
+    {
+        $property = new ReflectionProperty($client, $name);
+        $property->setAccessible(true);
+        $property->setValue($client, $value);
+    }
+
+    private function propertyValue(WebSocketClient $client, string $name): mixed
+    {
+        $property = new ReflectionProperty($client, $name);
+        $property->setAccessible(true);
+
+        return $property->getValue($client);
+    }
+
+    private function constant(WebSocketClient $client, string $name): int
+    {
+        return (new ReflectionClass($client))->getReflectionConstant($name)->getValue();
     }
 }

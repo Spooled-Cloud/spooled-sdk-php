@@ -239,7 +239,9 @@ $worker->process(function (JobContext $ctx): array {
         return ['partial' => true];
     }
     
-    // Return result (job completed on success)
+    // Return result (job completed on success). An array or object is stored
+    // as that JSON value. A string, number, or bool is stored as itself, not
+    // wrapped in {"result": ...}. null is stored as SQL NULL.
     return ['success' => true];
 });
 

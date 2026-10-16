@@ -20,15 +20,22 @@ final class SpooledRealtime
 
     private ?WebSocketClient $wsClient = null;
 
-    /** @var callable(): ?string|null */
+    /**
+     * Called on every WebSocket (re)connect. The optional bool is true after
+     * close 1008, asking the provider to drop a cached JWT and mint another.
+     *
+     * @var callable|null
+     */
     private readonly mixed $wsTokenProvider;
 
     /** @var callable(): ?string|null */
     private readonly mixed $accessTokenProvider;
 
     /**
-     * @param callable(): ?string|null $wsTokenProvider Returns a currently valid JWT for the
-     *                                                  WebSocket endpoint (which accepts no API key). Called on every (re)connect.
+     * @param callable|null $wsTokenProvider Returns a currently valid JWT for the
+     *                                       WebSocket endpoint (which accepts no API key). Called on every
+     *                                       (re)connect. When it accepts a bool, `true` means drop any cached
+     *                                       JWT and log in again (close 1008).
      * @param callable(): ?string|null $accessTokenProvider Returns the caller-owned JWT for
      *                                                      SSE, or null to authenticate with the API key. Called on every (re)connect.
      */

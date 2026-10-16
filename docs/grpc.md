@@ -179,7 +179,11 @@ if ($response['shouldDrain']) {
 
 ## Error Handling
 
-Transport failures throw `RuntimeException` with the gRPC status details and code. In particular, a stale lease is reported by the backend as a failed-precondition status. Do not retry settlement with an old `leaseId`; stop processing that execution.
+Transport failures throw `RuntimeException` with the gRPC status details and code.
+
+A lost or mismatched lease on `complete`, `fail`, or `renewLease` throws `Spooled\Grpc\LeaseLostException`. It extends `RuntimeException` (the type these calls always threw, with the gRPC status code 9 and the message `gRPC error: Lease expired`, or `gRPC error: lease_id does not match the job's current lease; this worker no longer holds it`), and its `errorCode` is `LEASE_EXPIRED`, the code REST uses for the same case. Do not retry settlement with the old `leaseId`.
+
+Other `FAILED_PRECONDITION` results, including `Job is already completed`, stay a `RuntimeException` whose code is the gRPC status (9).
 
 ## Connection Management
 

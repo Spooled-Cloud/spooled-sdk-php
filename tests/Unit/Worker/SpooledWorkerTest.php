@@ -269,6 +269,59 @@ final class SpooledWorkerTest extends TestCase
     }
 
     #[Test]
+    public function a_scalar_handler_result_is_sent_as_the_result_itself(): void
+    {
+        // A non-array return used to be wrapped as {"result": <value>}, so a
+        // handler that returned "done" was stored as an object. Arrays and
+        // objects are still sent unchanged. Null stays null.
+        $worker = $this->createWorker();
+        $completed = [];
+        $worker->on('job:completed', static function (array $event) use (&$completed): void {
+            $completed[] = $event['result'];
+        });
+
+        $object = new stdClass();
+        $object->sent = true;
+
+        $this->invokePrivate($worker, 'completeJob', $this->claimedJob('lease-abc'), 'done');
+        $this->invokePrivate($worker, 'completeJob', $this->claimedJob('lease-abc'), 42);
+        $this->invokePrivate($worker, 'completeJob', $this->claimedJob('lease-abc'), false);
+        $this->invokePrivate($worker, 'completeJob', $this->claimedJob('lease-abc'), 0);
+        $this->invokePrivate($worker, 'completeJob', $this->claimedJob('lease-abc'), '');
+        $this->invokePrivate($worker, 'completeJob', $this->claimedJob('lease-abc'), ['ok' => true]);
+        $this->invokePrivate($worker, 'completeJob', $this->claimedJob('lease-abc'), $object);
+        $this->invokePrivate($worker, 'completeJob', $this->claimedJob('lease-abc'), null);
+
+        $this->assertSame('done', $this->posts[0]['body']['result']);
+        $this->assertSame(42, $this->posts[1]['body']['result']);
+        $this->assertFalse($this->posts[2]['body']['result']);
+        $this->assertSame(0, $this->posts[3]['body']['result']);
+        $this->assertSame('', $this->posts[4]['body']['result']);
+        $this->assertSame(['ok' => true], $this->posts[5]['body']['result']);
+        $this->assertSame($object, $this->posts[6]['body']['result']);
+        $this->assertNull($this->posts[7]['body']['result']);
+        $this->assertSame(['done', 42, false, 0, '', ['ok' => true], $object, null], $completed);
+    }
+
+    #[Test]
+    public function an_unencodable_handler_result_fails_the_job(): void
+    {
+        $worker = $this->createWorker();
+
+        $this->invokePrivate($worker, 'completeJob', $this->claimedJob('lease-abc'), NAN);
+        $this->invokePrivate($worker, 'completeJob', $this->claimedJob('lease-abc', 'job-456'), ['value' => INF]);
+
+        $this->assertCount(2, $this->posts);
+        $this->assertSame('jobs/job-123/fail', $this->posts[0]['path']);
+        $this->assertSame('jobs/job-456/fail', $this->posts[1]['path']);
+        $this->assertStringContainsString('cannot be JSON-encoded', $this->posts[0]['body']['error']);
+        $this->assertStringContainsString('cannot be JSON-encoded', $this->posts[1]['body']['error']);
+        $this->assertSame('lease-abc', $this->posts[0]['body']['leaseId']);
+        $this->assertSame(0, $worker->getCompletedJobs());
+        $this->assertSame(2, $worker->getFailedJobs());
+    }
+
+    #[Test]
     public function it_echoes_lease_id_on_fail(): void
     {
         $worker = $this->createWorker();

@@ -113,6 +113,17 @@ $worker->process(function (JobContext $ctx): array {
 
 `progress()` and `log()` are currently placeholders; they do not send progress or logs to the API.
 
+## Handler Result
+
+The value the handler returns is stored as the job's `result`.
+
+- An array or object is stored as that JSON value. Keys are sent as written.
+- A string, integer, float, or bool is stored as that JSON value. It is not wrapped in `{"result": ...}`.
+- `null` is stored as SQL NULL.
+- A value `json_encode` cannot represent (`NAN`, `INF`, a resource, invalid UTF-8) fails the job. The failure text starts with `Job result cannot be JSON-encoded`.
+
+A handler that returns `"done"` is stored as `"done"`. Earlier releases wrapped a non-array return as `{"result": "done"}`; read `result` itself, not `result.result`. Arrays and objects are unchanged.
+
 ## Events
 
 `on()` returns an unsubscribe callable. Event handlers receive arrays with these fields:

@@ -4,12 +4,15 @@ declare(strict_types=1);
 
 namespace Spooled\Tests\Unit\Grpc;
 
+use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\Attributes\RequiresPhpExtension;
 use PHPUnit\Framework\TestCase;
 use ReflectionClass;
+use RuntimeException;
 use Spooled\Grpc\GrpcOptions;
 use Spooled\Grpc\GrpcQueueResource;
 use Spooled\Grpc\GrpcWorkersResource;
+use Spooled\Grpc\LeaseLostException;
 use Spooled\Grpc\SpooledGrpcClient;
 use Spooled\V1\CompleteRequest;
 use Spooled\V1\CompleteResponse;
@@ -23,16 +26,24 @@ use Spooled\V1\RegisterWorkerResponse;
 use Spooled\V1\RenewLeaseRequest;
 use Spooled\V1\RenewLeaseResponse;
 
+// Status codes come from ext-grpc. These tests classify a status without it.
+require_once __DIR__ . '/../../Support/GrpcStatusStub.php';
+
 final class ImmediateGrpcCall
 {
-    public function __construct(private readonly object $response)
-    {
+    public function __construct(
+        private readonly object $response,
+        private readonly ?object $status = null,
+    ) {
     }
 
     /** @return array{object, object} */
     public function wait(): array
     {
-        return [$this->response, (object) ['code' => \Grpc\STATUS_OK, 'details' => '']];
+        return [
+            $this->response,
+            $this->status ?? (object) ['code' => \Grpc\STATUS_OK, 'details' => ''],
+        ];
     }
 }
 
@@ -43,6 +54,11 @@ final class RecordingGrpcQueueClient
 
     /** @var array<string, array<string, mixed>> */
     public array $options = [];
+
+    /**
+     * When set, Complete, Fail, and RenewLease return this status instead of OK.
+     */
+    public ?object $statusOverride = null;
 
     /** @param array<string, mixed> $options */
     public function Dequeue(DequeueRequest $request, array $metadata = [], array $options = []): ImmediateGrpcCall
@@ -68,7 +84,7 @@ final class RecordingGrpcQueueClient
         $response = new CompleteResponse();
         $response->setSuccess(true);
 
-        return new ImmediateGrpcCall($response);
+        return new ImmediateGrpcCall($response, $this->statusOverride);
     }
 
     /** @param array<string, mixed> $options */
@@ -79,7 +95,7 @@ final class RecordingGrpcQueueClient
         $response = new FailResponse();
         $response->setSuccess(true);
 
-        return new ImmediateGrpcCall($response);
+        return new ImmediateGrpcCall($response, $this->statusOverride);
     }
 
     /** @param array<string, mixed> $options */
@@ -90,7 +106,7 @@ final class RecordingGrpcQueueClient
         $response = new RenewLeaseResponse();
         $response->setSuccess(true);
 
-        return new ImmediateGrpcCall($response);
+        return new ImmediateGrpcCall($response, $this->statusOverride);
     }
 }
 
@@ -311,5 +327,83 @@ final class GrpcClientTest extends TestCase
         $this->assertSame(4, $request->getMaxConcurrency());
         $this->assertSame(['zone' => 'eu'], iterator_to_array($request->getMetadata()));
         $this->assertSame(1_000_000, $transport->options['register']['timeout']);
+    }
+
+    /**
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function leaseLossDetailProvider(): array
+    {
+        return [
+            'expired' => ['complete', 'Lease expired'],
+            'mismatch' => ['fail', "lease_id does not match the job's current lease; this worker no longer holds it"],
+            'renew' => ['renewLease', 'Lease expired'],
+        ];
+    }
+
+    #[DataProvider('leaseLossDetailProvider')]
+    public function testLeaseLossIsTheSameConflictTheRestWorkerHandles(string $method, string $detail): void
+    {
+        // Unary Complete/Fail/RenewLease report a lost lease as FAILED_PRECONDITION
+        // with the message only. That becomes LeaseLostException (errorCode
+        // LEASE_EXPIRED), which still extends RuntimeException.
+        $transport = new RecordingGrpcQueueClient();
+        $transport->statusOverride = (object) [
+            'code' => \Grpc\STATUS_FAILED_PRECONDITION,
+            'details' => $detail,
+        ];
+        $queue = $this->queueResource($transport);
+
+        try {
+            $queue->{$method}([
+                'jobId' => 'job-1',
+                'workerId' => 'worker-1',
+                'leaseId' => 'stale-lease',
+                'error' => 'boom',
+                'extensionSecs' => 30,
+            ]);
+            $this->fail('expected a LeaseLostException');
+        } catch (LeaseLostException $error) {
+            // Still a RuntimeException with the gRPC status: handlers written
+            // for the old exception keep catching it.
+            $this->assertInstanceOf(RuntimeException::class, $error);
+            $this->assertSame('LEASE_EXPIRED', $error->errorCode);
+            $this->assertSame(\Grpc\STATUS_FAILED_PRECONDITION, $error->getCode());
+            $this->assertSame('gRPC error: ' . $detail, $error->getMessage());
+        }
+    }
+
+    public function testAFinishedJobIsNotReportedAsLeaseExpired(): void
+    {
+        // FAILED_PRECONDITION is also how the server says the job already
+        // finished. That is not a lost lease, so it must not become LEASE_EXPIRED.
+        $transport = new RecordingGrpcQueueClient();
+        $transport->statusOverride = (object) [
+            'code' => \Grpc\STATUS_FAILED_PRECONDITION,
+            'details' => 'Job is already completed',
+        ];
+        $queue = $this->queueResource($transport);
+
+        try {
+            $queue->complete([
+                'jobId' => 'job-1',
+                'workerId' => 'worker-1',
+                'leaseId' => 'lease-current',
+            ]);
+            $this->fail('expected a RuntimeException');
+        } catch (LeaseLostException $error) {
+            $this->fail('already-finished must not be LEASE_EXPIRED, got ' . $error->errorCode);
+        } catch (RuntimeException $error) {
+            $this->assertSame(\Grpc\STATUS_FAILED_PRECONDITION, $error->getCode());
+            $this->assertStringContainsString('Job is already completed', $error->getMessage());
+        }
+    }
+
+    private function queueResource(RecordingGrpcQueueClient $transport): GrpcQueueResource
+    {
+        $client = new SpooledGrpcClient(new GrpcOptions(address: 'localhost:50051', secure: false));
+        (new ReflectionClass(SpooledGrpcClient::class))->getProperty('queueClient')->setValue($client, $transport);
+
+        return new GrpcQueueResource($client);
     }
 }

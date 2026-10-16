@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Spooled\Worker;
 
 use DateTimeImmutable;
+use JsonException;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 use RuntimeException;
@@ -250,6 +251,11 @@ class SpooledWorker
      * Register job handler.
      *
      * Must be called before start().
+     *
+     * The return value is stored as the job's result. An array or object is
+     * that JSON value. A string, number, or bool is stored as itself, not
+     * wrapped in {"result": ...}. Null is stored as SQL NULL. A value
+     * json_encode cannot represent fails the job.
      *
      * @param callable(JobContext): mixed $handler
      */
@@ -581,7 +587,10 @@ class SpooledWorker
     /**
      * Complete a job.
      *
-     * @param mixed $result
+     * The handler return value is sent as the job result. Arrays and objects
+     * stay themselves. A string, number, or bool is sent as that JSON value,
+     * not wrapped in {"result": ...} (that wrapper made a returned "done"
+     * read back as an object). Null stays SQL NULL.
      */
     private function completeJob(ClaimedJob $job, mixed $result): void
     {
@@ -590,11 +599,19 @@ class SpooledWorker
         }
 
         try {
-            $resultArray = is_array($result) ? $result : ($result !== null ? ['result' => $result] : null);
+            $resultValue = $this->handlerResultValue($result);
+        } catch (JsonException $e) {
+            // Sending the value would fail in the HTTP encoder and leave the
+            // job processing until its lease expired, with the real reason lost.
+            $this->failJob($job, 'Job result cannot be JSON-encoded: ' . $e->getMessage());
 
+            return;
+        }
+
+        try {
             $params = [
                 'workerId' => $this->workerId,
-                'result' => $resultArray,
+                'result' => $resultValue,
             ];
 
             // Echo the lease fencing token from claim so completion applies
@@ -612,7 +629,7 @@ class SpooledWorker
             $this->emit(WorkerEvent::JOB_COMPLETED->value, [
                 'jobId' => $job->id,
                 'queueName' => $job->queueName,
-                'result' => $resultArray,
+                'result' => $resultValue,
             ]);
 
             $this->debug("Job completed: {$job->id}");
@@ -620,6 +637,28 @@ class SpooledWorker
         } catch (Throwable $e) {
             $this->reportWorkerError($e, $job, 'complete');
         }
+    }
+
+    /**
+     * JSON value to store for a handler return.
+     *
+     * Arrays and objects pass through unchanged. Scalars pass through too, so
+     * the stored result is the value the handler returned. Null stays null.
+     *
+     * @throws JsonException when the value cannot be represented as JSON
+     */
+    private function handlerResultValue(mixed $result): mixed
+    {
+        if ($result === null) {
+            return null;
+        }
+
+        $encoded = json_encode($result, JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION);
+        if (!is_string($encoded)) {
+            throw new JsonException('Job result cannot be JSON-encoded');
+        }
+
+        return $result;
     }
 
     /**
