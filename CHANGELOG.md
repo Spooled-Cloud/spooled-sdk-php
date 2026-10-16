@@ -5,6 +5,67 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-10-16
+
+The worker stores what a handler returns as the job result, a lost lease over
+gRPC has its own exception, and the WebSocket client stops reconnecting to a
+server that keeps closing it. One change affects code that reads job results;
+read "Changed" before upgrading.
+
+### Changed
+
+- **Behavior change: `SpooledWorker` sends a scalar handler return value as the
+  job result itself.** A handler that returned a string, integer, float or bool
+  used to have it wrapped as `{"result": value}`, so a handler that returned
+  `"done"` produced the result `{"result": "done"}`. The result is now `"done"`.
+  Arrays and objects are sent as before, and `null` is still stored as no result.
+  Code that reads `result.result` for a scalar return must read `result`. The
+  `job:completed` event carries the same value in its `result` field. A value
+  that `json_encode` cannot represent (`NAN`, `INF`, a resource, invalid UTF-8)
+  now fails the job with a message that starts with `Job result cannot be
+  JSON-encoded`, instead of leaving it processing until the lease expires.
+
+### Added
+
+- `Spooled\Grpc\LeaseLostException`, thrown by the gRPC `complete`, `fail` and
+  `renewLease` calls when the worker no longer holds the lease
+  (`FAILED_PRECONDITION` with the message "Lease expired", or the message saying
+  that `lease_id` does not match the job's current lease). It extends
+  `RuntimeException`, the type these calls always threw, so existing
+  `catch (RuntimeException)` blocks still catch it, and its `errorCode` is
+  `LEASE_EXPIRED`, the code REST uses for the same case. The exception code and
+  message are unchanged (gRPC status 9). Any other failed precondition, such as
+  "Job is already completed", is still a plain `RuntimeException`.
+- A `wsTokenProvider` passed to `SpooledRealtime` may accept an optional `bool`.
+  The client passes `true` after a close 1008, which asks the provider to drop a
+  cached JWT and log in again. Providers that take no argument are called as
+  before.
+
+### Fixed
+
+- **The WebSocket client no longer reconnects forever after the server accepts
+  the connection and closes it at once.** The reconnect backoff was reset whenever
+  a socket opened, so a server that accepted the upgrade and then closed it (close
+  1011 when the event channel cannot be opened) was retried for as long as the
+  process ran. Only a connection that stayed open for 30 seconds now resets the
+  budget. Connections that open and close before that count toward a ceiling of 10
+  in a row, after which the client stops and emits an `error` event. Connect
+  failures, where the socket never opens because the server is down, are not
+  counted: the client keeps backing off and reconnects when the server is back,
+  however long the outage lasts.
+- **A close 1008 logs in again once with the API key before the client gives
+  up.** The server uses 1008 when the access token expired or was revoked.
+  `SpooledClient::realtime()` now drops its cached JWT and logs in again, and the
+  client presents the new token once. It stops if that token is rejected too
+  before the socket has stayed up, or if the provider returns the token the server
+  already rejected. A JWT that you supplied yourself is not replaced.
+- **`disconnect()` after a stable connection resets the attempt budget.**
+  `disconnect()` clears the running flag before the socket closes, so the close
+  handler never refilled the counter, and the next `connect()` on the same client
+  could give up after one more drop. A connection that was open for 30 seconds or
+  longer now resets the budget when you disconnect; one that closed sooner keeps
+  its count.
+
 ## [1.5.0] - 2026-10-15
 
 Workflow job timeouts are typed in both directions, in seconds. Everything is

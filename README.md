@@ -889,7 +889,7 @@ are retried too: they are fenced by the lease. If the first attempt of a
 
 ## Version Source
 
-Release `1.5.0` is defined once in `Spooled\Version::VERSION`. The default HTTP `User-Agent` and default `SpooledWorker` registration version derive from that constant. Application metadata may override the worker version explicitly.
+Release `1.6.0` is defined once in `Spooled\Version::VERSION`. The default HTTP `User-Agent` and default `SpooledWorker` registration version derive from that constant. Application metadata may override the worker version explicitly.
 
 ## Development
 
