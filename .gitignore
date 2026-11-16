@@ -35,3 +35,5 @@ composer.lock
 
 # Test output
 phpunit.xml.bak
+# Written by scripts/test-local.php (TEST_RESULTS_FILE)
+/test-results.json
