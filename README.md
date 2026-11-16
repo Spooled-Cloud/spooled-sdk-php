@@ -582,7 +582,7 @@ use Spooled\Webhooks\Signature;
 
 $body = file_get_contents('php://input'); // the raw body, before json_decode
 $valid = Signature::verify(
-    getenv('SPOOLED_WEBHOOK_SECRET'),
+    getenv('SPOOLED_WEBHOOK_SECRET') ?: '', // getenv() returns false when unset
     $_SERVER['HTTP_X_SPOOLED_TIMESTAMP'] ?? null,
     $_SERVER['HTTP_X_SPOOLED_SIGNATURE'] ?? null,
     $body,

@@ -15,7 +15,7 @@ namespace Spooled\Webhooks;
  * ```php
  * $body = file_get_contents('php://input');
  * $ok = Signature::verify(
- *     getenv('SPOOLED_WEBHOOK_SECRET'),
+ *     getenv('SPOOLED_WEBHOOK_SECRET') ?: '', // getenv() returns false when unset
  *     $_SERVER['HTTP_X_SPOOLED_TIMESTAMP'] ?? null,
  *     $_SERVER['HTTP_X_SPOOLED_SIGNATURE'] ?? null,
  *     $body,

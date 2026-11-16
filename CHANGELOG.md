@@ -8,7 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 Fixes from testing the published 1.6.0 against production, and a webhook
-signature check.
+signature check. One change affects code that reads
+`ValidationError::getFieldErrors()`; read "Changed" before upgrading.
+
+### Changed
+
+- **`ValidationError::getFieldErrors()` now returns `field => [message, ...]`
+  instead of the raw `details` list** (`[{field, message, code}, ...]`). The
+  README's `foreach (getFieldErrors() as $field => $errors)` printed numeric
+  keys and failed on `implode()` with the old shape. An entry without a field
+  is grouped under `''`, and the `details.fields` map form is still accepted.
+  This breaks code that indexed the old list (`$errors[0]['field']`): use the
+  new `getDetails()` for the raw `[{field, message, code}, ...]` list (it is
+  also still in the public `$details` property).
 
 ### Fixed
 
@@ -28,13 +40,6 @@ signature check.
   The README now chains subscriptions on `sse()` and calls `listen()`, ending
   with `stop()` from a callback or a signal handler, and the docblocks say the
   methods block.
-- **`ValidationError::getFieldErrors()` returned the raw `details` list**
-  (`[{field, message, code}, ...]`), so the README's
-  `foreach (getFieldErrors() as $field => $errors)` printed numeric keys and
-  failed on `implode()`. It now returns `field => [message, ...]`; an entry
-  without a field is grouped under `''`, and the `details.fields` map form is
-  still accepted. The new `getDetails()` returns the raw details (also still in
-  the public `$details` property).
 - The README and `docs/GETTING_STARTED.md` Quick Start were missing
   `require __DIR__ . '/vendor/autoload.php';` (`Class "Spooled\SpooledClient"
   not found` when run as written).
