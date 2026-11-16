@@ -223,6 +223,9 @@ final readonly class TokenValidation
 
 /**
  * Email availability check response (GET /auth/check-email).
+ *
+ * Since backend 0.1.130, `exists` is always false and `available` always true
+ * unless the request carries the operator's admin key.
  */
 final readonly class EmailCheckResponse
 {

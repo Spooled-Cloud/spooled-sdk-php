@@ -123,7 +123,11 @@ final class AuthResource extends BaseResource
     }
 
     /**
-     * Check if email exists.
+     * Check whether email signup is open (GET /auth/check-email).
+     *
+     * Since backend 0.1.130, `exists` is always false and `available` always
+     * true unless the request carries the operator's admin key. Whether an
+     * address has an account is learned from emailVerify(), after the code.
      */
     public function checkEmail(string $email): EmailCheckResponse
     {
