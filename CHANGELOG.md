@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-16
+
 Fixes from testing the published 1.6.0 against production, and a webhook
 signature check. One change affects code that reads
 `ValidationError::getFieldErrors()`; read "Changed" before upgrading.
