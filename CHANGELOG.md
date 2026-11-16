@@ -597,7 +597,6 @@ what the API actually serves.
 
 ### Added
 
-- Agent knowledge base under `docs/ai/knowledge/` (+ KB sync Cursor rule).
 
 ## [1.0.18] - 2026-07-14
 
