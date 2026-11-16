@@ -54,7 +54,7 @@ $config = new WorkerConfig(
     workerType: 'php',
     // version defaults to Spooled\Version::VERSION (1.6.0)
     metadata: ['environment' => 'production'],
-    workerId: 'emails-worker-01', // stable registration identity
+    workerId: getenv('SPOOLED_WORKER_ID') ?: null, // null: server-generated (see Worker Identity)
 );
 ```
 
@@ -64,11 +64,13 @@ The current runtime executes its synchronous handler in the polling process, so 
 
 ## Worker Identity
 
+**Worker ids are one namespace shared by every Spooled customer, so a `workerId` must be unique to you:** a fixed name such as `worker-1` or `emails-worker-01`, or a bare hostname, may already belong to another organization, and registration then fails with `HTTP 409` (`ConflictError`, "This worker_id cannot be used"). Leave `workerId` null and the server generates a unique id.
+
 `workerId` is 1-128 characters from `[A-Za-z0-9._-]`. When set, `start()` sends it and registration becomes an upsert: the process reuses the row it already owns across restarts, and re-registering an id you own is not charged against the plan worker cap.
 
 Leave it null and the server mints a UUID per registration, as before. Every restart then leaves the previous row holding a worker-cap slot until the stale-worker reaper clears it about two minutes later, so a crash-looping worker on a tight plan can quota itself out of registering with `HTTP 429` (`RateLimitError`, `errorCode` `"QUOTA_EXCEEDED"`).
 
-Derive the value from something that survives a restart - the hostname, the supervisor process number, the replica ordinal - never from a PID or a freshly generated UUID, which defeat the upsert. An id already owned by a different organization is rejected with `HTTP 409` (`ConflictError`).
+To pin one, make it unique to you and stable across restarts: a prefix, the hostname and a random suffix generated once and kept in your deployment config (`php -r "echo 'myapp-' . gethostname() . '-' . bin2hex(random_bytes(4)), PHP_EOL;"`), plus the supervisor process number or replica ordinal when one host runs several workers. Never a hostname, process number or ordinal on its own (other customers use the same ones), and never a PID or a UUID generated at every start, which defeats the upsert.
 
 ## Lease Renewal and Fencing
 
@@ -208,7 +210,7 @@ services:
 
 Scale with `docker compose up --scale spooled-worker=4 -d`. The PHP file should construct `WorkerConfig` (not the removed `WorkerOptions` API), enable `pcntl_async_signals(true)`, register `SIGTERM`/`SIGINT` handlers that call `$worker->stop()`, and then call the blocking `$worker->start()` as shown above. Choose `stop_grace_period` longer than `shutdownTimeout` (milliseconds) plus application cleanup time.
 
-Give each replica a `WorkerConfig::workerId` that is stable across restarts, read from an environment variable your orchestrator sets per replica. Redeployed containers then reuse their existing registrations instead of accumulating rows against the plan worker cap.
+To pin worker ids, give each replica a `WorkerConfig::workerId` that is unique to you and stable across restarts (see Worker Identity), read from an environment variable your orchestrator sets per replica. Redeployed containers then reuse their existing registrations instead of accumulating rows against the plan worker cap. Without one, each replica gets a server-generated id.
 
 ### Supervisor
 
@@ -231,9 +233,10 @@ killasgroup=true
 stopwaitsecs=45
 redirect_stderr=true
 stdout_logfile=/var/log/supervisor/spooled-worker.log
-environment=APP_ENV="production",SPOOLED_WORKER_ID="spooled-worker-%(process_num)02d"
+; Replace 3f9a0c12 with your own random value (php -r "echo bin2hex(random_bytes(4));").
+environment=APP_ENV="production",SPOOLED_WORKER_ID="myapp-%(host_node_name)s-3f9a0c12-%(process_num)02d"
 ```
 
 Provide `SPOOLED_API_KEY` through the host environment, a secret manager, or a protected Supervisor include rather than committing it in this file. Keep `stopwaitsecs` longer than `WorkerConfig::shutdownTimeout`; after that deadline Supervisor sends `SIGKILL`, which bypasses worker deregistration and graceful cleanup.
 
-The `SPOOLED_WORKER_ID` above gives each of the four processes one stable identity; pass it to `WorkerConfig::workerId` in `worker.php`. A `SIGKILL`ed process then upserts its existing row on restart instead of registering a fresh one and leaving the un-deregistered row occupying a plan worker-cap slot until the stale-worker reaper clears it.
+The `SPOOLED_WORKER_ID` above gives each of the four processes one stable identity that no other customer has (worker ids are global, so `spooled-worker-01` alone could already be taken); pass it to `WorkerConfig::workerId` in `worker.php`. A `SIGKILL`ed process then upserts its existing row on restart instead of registering a fresh one and leaving the un-deregistered row occupying a plan worker-cap slot until the stale-worker reaper clears it.

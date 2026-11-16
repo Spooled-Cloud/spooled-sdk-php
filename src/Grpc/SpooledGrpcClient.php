@@ -629,6 +629,8 @@ final class GrpcWorkersResource
      * optional stable `workerId` (1-128 characters of letters, digits, `-`,
      * `_`, `.`). Registering again with the same `workerId` updates that worker
      * instead of adding one; an id another organization uses is ALREADY_EXISTS.
+     * Worker ids are global across all organizations, so a fixed name or a bare
+     * hostname may already be taken: omit `workerId` to get a generated one.
      *
      * @param array<string, mixed> $params
      * @return array<string, mixed>

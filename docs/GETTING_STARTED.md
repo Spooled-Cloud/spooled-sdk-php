@@ -18,9 +18,9 @@ composer require spooled-cloud/spooled
 
 ### Runtime-Specific Extensions
 
-- `ext-pcntl` + `ext-posix` - Required when starting `SpooledWorker`; lease renewal for blocking handlers uses forked child processes on Unix-like CLI environments
-- `ext-grpc` + `ext-protobuf` - For gRPC transport support
-- WebSocket library (e.g., `ratchet/pawl`) - For WebSocket realtime support
+- `ext-pcntl` + `ext-posix` - Required when starting `SpooledWorker` (`start()` throws without them); lease renewal for blocking handlers uses forked child processes on Unix-like CLI environments
+- `ext-grpc` + `ext-protobuf` - Required for gRPC transport (`pecl install grpc protobuf`); the `grpc/grpc` and `google/protobuf` Composer packages already come with the SDK
+- `ratchet/pawl` - Required for WebSocket realtime (`composer require ratchet/pawl`); SSE needs nothing extra
 
 ## Quick Start
 
@@ -28,6 +28,8 @@ composer require spooled-cloud/spooled
 
 ```php
 <?php
+
+require __DIR__ . '/vendor/autoload.php'; // Composer's autoloader
 
 use Spooled\SpooledClient;
 use Spooled\Config\ClientOptions;

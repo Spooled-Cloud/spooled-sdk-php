@@ -5,6 +5,57 @@ All notable changes to the Spooled PHP SDK will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Fixes from testing the published 1.6.0 against production, and a webhook
+signature check.
+
+### Fixed
+
+- **Every worker example used a worker id another customer could own.** Worker
+  ids are one namespace across all Spooled organizations, so the README's
+  `my-queue-worker-01` and `fast-jobs-worker-01`, `docs/workers.md`'s
+  `emails-worker-01` and Supervisor `spooled-worker-%(process_num)02d`,
+  `docs/resources.md`'s `worker-1` and `billing-worker-01`, `docs/grpc.md` and
+  `examples/worker-example.php` failed on first run with `409`
+  (`ConflictError`, "This worker_id cannot be used"). They now omit the id (the
+  server generates one) or show how to build one unique to you, and the
+  `workerId` docblocks say ids are global. The worker itself already sent no id
+  when none was configured.
+- **The README realtime example never got past its first subscription.**
+  `SpooledRealtime::subscribeToQueue()` (like `subscribe()` and
+  `subscribeToJob()`) blocks until `stop()`, so the lines after it never ran.
+  The README now chains subscriptions on `sse()` and calls `listen()`, ending
+  with `stop()` from a callback or a signal handler, and the docblocks say the
+  methods block.
+- **`ValidationError::getFieldErrors()` returned the raw `details` list**
+  (`[{field, message, code}, ...]`), so the README's
+  `foreach (getFieldErrors() as $field => $errors)` printed numeric keys and
+  failed on `implode()`. It now returns `field => [message, ...]`; an entry
+  without a field is grouped under `''`, and the `details.fields` map form is
+  still accepted. The new `getDetails()` returns the raw details (also still in
+  the public `$details` property).
+- The README and `docs/GETTING_STARTED.md` Quick Start were missing
+  `require __DIR__ . '/vendor/autoload.php';` (`Class "Spooled\SpooledClient"
+  not found` when run as written).
+- Requirements now say that `SpooledWorker::start()` throws without `ext-pcntl`
+  and `ext-posix`, that WebSocket realtime needs `composer require
+  ratchet/pawl`, and that gRPC needs `pecl install grpc protobuf` only: the
+  `grpc/grpc` and `google/protobuf` packages are already dependencies, so the
+  README no longer tells you to require them (and `composer.json` no longer
+  lists them under `suggest`).
+- Removed `test-results.json`, a local test-run output committed with 1.0.0,
+  and ignored it.
+
+### Added
+
+- `Spooled\Webhooks\Signature::verify($secret, $timestampHeader,
+  $signatureHeader, $body, $toleranceSeconds = 300)` checks
+  `X-Spooled-Signature` (`sha256=` + hex HMAC-SHA256 of `"{timestamp}.{body}"`)
+  and the `X-Spooled-Timestamp` age, comparing in constant time.
+  `Signature::sign()` computes the header for tests.
+- `ValidationError::getDetails()`.
+
 ## [1.6.0] - 2026-10-16
 
 The worker stores what a handler returns as the job result, a lost lease over

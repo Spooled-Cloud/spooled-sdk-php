@@ -215,6 +215,52 @@ final class SpooledErrorTest extends TestCase
     }
 
     #[Test]
+    public function validation_error_groups_api_detail_list_by_field(): void
+    {
+        $details = [
+            ['field' => 'queue_name', 'message' => 'Field `queue_name` is required', 'code' => 'missing_field'],
+            ['field' => 'priority', 'message' => 'expected an integer', 'code' => 'invalid_type'],
+            ['field' => 'queue_name', 'message' => 'must not be empty'],
+            ['message' => 'Request body is invalid'],
+        ];
+        $body = json_encode([
+            'error' => 'validation_error',
+            'code' => 'VALIDATION_ERROR',
+            'message' => 'Field `queue_name` is required',
+            'details' => $details,
+        ]);
+
+        $error = SpooledError::fromResponse(400, $body);
+
+        $this->assertInstanceOf(ValidationError::class, $error);
+        $this->assertSame([
+            'queue_name' => ['Field `queue_name` is required', 'must not be empty'],
+            'priority' => ['expected an integer'],
+            '' => ['Request body is invalid'],
+        ], $error->getFieldErrors());
+        $this->assertSame($details, $error->getDetails());
+
+        // The README pattern works on the result.
+        $lines = [];
+        foreach ($error->getFieldErrors() as $field => $errors) {
+            $lines[] = "{$field}: " . implode(', ', $errors);
+        }
+        $this->assertSame('queue_name: Field `queue_name` is required, must not be empty', $lines[0]);
+    }
+
+    #[Test]
+    public function validation_error_accepts_field_maps(): void
+    {
+        $error = new ValidationError(details: ['fields' => ['email' => ['required', 'invalid'], 'name' => 'too short']]);
+        $this->assertSame(['email' => ['required', 'invalid'], 'name' => ['too short']], $error->getFieldErrors());
+
+        $plain = new ValidationError(details: ['email' => 'required']);
+        $this->assertSame(['email' => ['required']], $plain->getFieldErrors());
+
+        $this->assertSame([], (new ValidationError())->getFieldErrors());
+    }
+
+    #[Test]
     public function rate_limit_error_calculates_retry_time(): void
     {
         $error = new RateLimitError(

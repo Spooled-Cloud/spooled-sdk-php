@@ -4,7 +4,7 @@ The PHP SDK includes an optional gRPC transport for queue and worker operations.
 
 ## Requirements
 
-The Composer runtime packages are already declared by the SDK. The PHP extensions must also be installed and enabled:
+The `grpc/grpc` and `google/protobuf` Composer packages are already dependencies of the SDK; do not require them again. The PHP extensions must be installed and enabled (`SpooledGrpcClient::isAvailable()` checks both):
 
 ```bash
 pecl install grpc protobuf
@@ -89,10 +89,12 @@ $registration = $grpc->workers->register([
     'queueName' => 'emails',
     'hostname' => gethostname() ?: 'php-worker',
     'concurrency' => 5,
-    // Optional stable id (1-128 chars, [A-Za-z0-9._-]): registering again with
-    // it after a restart updates this worker instead of adding one, so a
-    // restart does not count twice against the plan's worker limit.
-    'workerId' => 'emails-worker-01',
+    // No workerId: the server generates a unique one. Worker ids are global
+    // across all Spooled customers, so a fixed id ('emails-worker-01') or a
+    // bare hostname may already be taken (ALREADY_EXISTS). To keep one id
+    // across restarts, pass a stable id unique to you (1-128 chars,
+    // [A-Za-z0-9._-]), such as 'myapp-' . gethostname() . '-<random suffix>'
+    // generated once and kept in your config.
     'metadata' => [
         'sdkVersion' => \Spooled\Version::VERSION,
         'environment' => 'production',

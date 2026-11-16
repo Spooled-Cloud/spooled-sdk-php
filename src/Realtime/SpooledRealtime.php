@@ -98,6 +98,12 @@ final class SpooledRealtime
     /**
      * Create a unified subscription that uses the best available transport.
      *
+     * This call BLOCKS: it opens the connection and dispatches events to the
+     * callback until stop() is called (from the callback or a signal handler),
+     * so code after it runs only then. To watch several queues or jobs on one
+     * connection, chain the subscriptions on sse() and then call its blocking
+     * listen() (or on ws(), then connect()).
+     *
      * @param callable(array<string, mixed>): void $callback
      */
     public function subscribe(callable $callback): void
@@ -116,6 +122,12 @@ final class SpooledRealtime
 
     /**
      * Subscribe to job events.
+     *
+     * This call BLOCKS: it opens the connection and dispatches events to the
+     * callback until stop() is called (from the callback or a signal handler),
+     * so code after it runs only then. To watch several queues or jobs on one
+     * connection, chain the subscriptions on sse() and then call its blocking
+     * listen() (or on ws(), then connect()).
      *
      * @param callable(array<string, mixed>): void $callback
      */
@@ -136,6 +148,12 @@ final class SpooledRealtime
     /**
      * Subscribe to queue events.
      *
+     * This call BLOCKS: it opens the connection and dispatches events to the
+     * callback until stop() is called (from the callback or a signal handler),
+     * so code after it runs only then. To watch several queues or jobs on one
+     * connection, chain the subscriptions on sse() and then call its blocking
+     * listen() (or on ws(), then connect()).
+     *
      * @param callable(array<string, mixed>): void $callback
      */
     public function subscribeToQueue(string $queueName, callable $callback): void
@@ -153,7 +171,9 @@ final class SpooledRealtime
     }
 
     /**
-     * Stop all realtime connections.
+     * Stop all realtime connections. Safe to call from an event callback or a
+     * signal handler: a blocking subscribe call returns once the current
+     * event has been handled.
      */
     public function stop(): void
     {

@@ -144,9 +144,10 @@ $statuses = $client->jobs->batchStatus(['job_1', 'job_2', 'job_3']);
 ### Claim Jobs (for workers)
 
 ```php
+// $workerId is the id from workers->register() (see Register Worker)
 $result = $client->jobs->claim([
     'queueName' => 'my-queue',
-    'workerId' => 'worker-1',
+    'workerId' => $workerId,
     'limit' => 10,
     'leaseDurationSecs' => 300,
 ]);
@@ -158,7 +159,7 @@ $result = $client->jobs->claim([
 
 ```php
 $client->jobs->complete('job_id', [
-    'workerId' => 'worker-1',
+    'workerId' => $workerId,
     'result' => ['success' => true],
     'leaseId' => $claimedJob->leaseId, // required: the lease id the claim returned
 ]);
@@ -175,7 +176,7 @@ it the API answers 422 (`ValidationError`, ``Field `lease_id` is required``).
 
 ```php
 $client->jobs->fail('job_id', [
-    'workerId' => 'worker-1',
+    'workerId' => $workerId,
     'error' => 'Something went wrong',
     'leaseId' => $claimedJob->leaseId, // required: the lease id the claim returned
 ]);
@@ -189,7 +190,7 @@ the middle of a multi-byte character).
 
 ```php
 $client->jobs->heartbeat('job_id', [
-    'workerId' => 'worker-1',
+    'workerId' => $workerId,
     'leaseDurationSecs' => 300,
     'leaseId' => $claimedJob->leaseId, // required: the lease id the claim returned
 ]);
@@ -534,13 +535,15 @@ $registration = $client->workers->register([
     'hostname' => gethostname() ?: 'php-worker',   // required
     'maxConcurrency' => 10,                        // optional, default 5
     'workerType' => 'php',                         // optional
-    'workerId' => 'billing-worker-01',             // optional, 1-128 chars [A-Za-z0-9._-]
+    // 'workerId' => ...,                           // optional, see below
 ]);
 // $registration->id
 // $registration->heartbeatIntervalSecs
 ```
 
-A stable `workerId` makes registration an upsert, so a restarting process reuses the row it already owns, and re-registering an id you own is not charged against the plan worker cap. Use something that survives restarts (a hostname, a process number, a StatefulSet ordinal) - never a PID or a fresh UUID.
+**Worker ids are one namespace shared by every Spooled customer, so a `workerId` must be unique to you:** a fixed name such as `worker-1` or `emails-worker-01`, or a bare hostname, may already belong to another organization, and registration then fails with `HTTP 409` (`ConflictError`, "This worker_id cannot be used").
+
+A stable `workerId` (1-128 chars, `[A-Za-z0-9._-]`) makes registration an upsert, so a restarting process reuses the row it already owns, and re-registering an id you own is not charged against the plan worker cap. Build it from a prefix, the hostname and a random suffix generated once and kept in your deployment config (`'myapp-' . gethostname() . '-' . bin2hex(random_bytes(4))`, run once) - never a bare hostname, process number or ordinal, a PID, or a UUID generated at every start.
 
 Omit `workerId` and the server mints a UUID instead, as before. Each restart then leaves the previous row holding a worker-cap slot until the stale-worker reaper clears it about two minutes later, which is enough for a crash-looping worker on a tight plan to quota itself out of registering.
 

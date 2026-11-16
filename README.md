@@ -32,9 +32,15 @@ Official PHP SDK for [Spooled Cloud](https://spooled.cloud) - a modern job queue
 
 ### Optional Extensions
 
-- `ext-pcntl` + `ext-posix` - Required by `SpooledWorker` at startup for automatic lease renewal while synchronous handlers run (Unix-like CLI environments); REST/gRPC/realtime clients do not require them
-- `ext-grpc` + `ext-protobuf` - For gRPC transport support
-- WebSocket library (e.g., `ratchet/pawl`) - For WebSocket realtime support
+- `ext-pcntl` + `ext-posix` - Required by `SpooledWorker`: `start()` throws a
+  `RuntimeException` without them. The worker forks a child process to renew the
+  lease while a synchronous handler runs, so it needs a Unix-like CLI PHP
+  (not Windows, not a web SAPI). REST, gRPC and realtime clients do not need them.
+- `ext-grpc` + `ext-protobuf` - Required for the gRPC transport
+  (`pecl install grpc protobuf`). The `grpc/grpc` and `google/protobuf` Composer
+  packages are already dependencies of this SDK; do not require them again.
+- `ratchet/pawl` - Required for WebSocket realtime (`composer require ratchet/pawl`).
+  Without it the realtime client uses SSE, which needs nothing extra.
 
 ## Installation
 
@@ -45,17 +51,23 @@ composer require spooled-cloud/spooled
 ### With gRPC Support
 
 ```bash
-# Install PHP extensions first
+# The PHP extensions. The grpc/grpc and google/protobuf Composer packages come
+# with spooled-cloud/spooled, so there is nothing else to require.
 pecl install grpc protobuf
+```
 
-# Then require gRPC packages
-composer require grpc/grpc google/protobuf
+### With WebSocket Realtime
+
+```bash
+composer require ratchet/pawl
 ```
 
 ## Quick Start
 
 ```php
 <?php
+
+require __DIR__ . '/vendor/autoload.php'; // Composer's autoloader
 
 use Spooled\SpooledClient;
 use Spooled\Config\ClientOptions;
@@ -188,6 +200,12 @@ extend them with `jobs->heartbeat()`. Each call needs the claimed job's
 ```php
 <?php
 
+// Register without a workerId: the server generates a unique one.
+$workerId = $client->workers->register([
+    'queueName' => 'my-queue',
+    'hostname' => gethostname() ?: 'php-worker',
+])->id;
+
 $claimed = $client->jobs->claim(['queue' => 'my-queue', 'workerId' => $workerId, 'limit' => 1]);
 foreach ($claimed->jobs as $job) {
     $client->jobs->complete($job->id, [
@@ -221,10 +239,9 @@ $worker = new SpooledWorker($client, [
     'queueName' => 'my-queue',
     // Handlers run one at a time in this process (one job claimed per poll);
     // run several worker processes for parallelism.
-    // Optional, but recommended: a stable id (1-128 chars, [A-Za-z0-9._-])
-    // makes registration an upsert, so restarts reuse this worker's row
-    // instead of leaving the old one against the plan worker cap.
-    'workerId' => 'my-queue-worker-01',
+    // No 'workerId': the server generates a unique one. Worker ids are global
+    // across all Spooled customers, so never use a fixed name or a bare
+    // hostname; see "Worker ids" below to pin a stable one.
 ]);
 
 $worker->process(function (JobContext $ctx): array {
@@ -254,6 +271,26 @@ pcntl_signal(SIGINT, fn() => $worker->stop());
 
 // Start processing (blocking)
 $worker->start();
+```
+
+#### Worker ids
+
+**Worker ids are one namespace shared by every Spooled customer, so a `workerId` must be unique to you:** a fixed name such as `worker-1` or `emails-worker-01`, or a bare hostname, may already belong to another organization, and registration then fails with `HTTP 409` (`ConflictError`, "This worker_id cannot be used"). Omit `workerId` and the server generates a unique id at every `start()`.
+
+A pinned id (1-128 characters from `[A-Za-z0-9._-]`) makes registration an
+upsert, so a restarted process reuses its worker row instead of leaving the old
+one against the plan worker cap for about two minutes. Build it from a prefix,
+the hostname and a random suffix, generate it once, and keep it in your
+deployment config (for example `SPOOLED_WORKER_ID`):
+
+```php
+<?php
+
+// Run once and store the result: php -r "echo 'myapp-' . gethostname() . '-' . bin2hex(random_bytes(4)), PHP_EOL;"
+$worker = new SpooledWorker($client, [
+    'queueName' => 'my-queue',
+    'workerId' => getenv('SPOOLED_WORKER_ID') ?: null, // null: server-generated
+]);
 ```
 
 While a handler runs, the worker's renewal process also keeps the job lease and
@@ -352,21 +389,49 @@ if ($realtime->isWebSocketAvailable()) {
     echo "Using SSE\n";
 }
 
-// Subscribe to queue events. Event data comes as the server sends it, with
+// subscribe(), subscribeToQueue() and subscribeToJob() BLOCK: each opens the
+// connection and handles events until stop() is called, so code after the
+// call runs only after that. Event data comes as the server sends it, with
 // snake_case keys (job_id, queue_name, ...).
-$realtime->subscribeToQueue('my-queue', function (array $event): void {
+$realtime->subscribeToQueue('my-queue', function (array $event) use ($realtime): void {
     echo "Event: {$event['type']} - Job: {$event['data']['job_id']}\n";
+    if ($event['type'] === 'job.failed') {
+        $realtime->stop(); // subscribeToQueue() returns after this callback
+    }
 });
-
-// Or subscribe to specific job
-$realtime->subscribeToJob($jobId, function (array $event): void {
-    echo "Job event: {$event['type']}\n";
-});
-
-// Stop when done
-$realtime->stop();
 $client->close();
 ```
+
+To watch several things on one connection, add the subscriptions to the SSE
+client first, then call the blocking `listen()`. End it with `stop()` from a
+callback or a signal handler:
+
+```php
+<?php
+
+$sse = $client->realtime()->sse();
+
+$sse->subscribeToQueue('my-queue', function (array $event): void {
+        echo "Queue event: {$event['type']}\n";
+    })
+    ->subscribeToJob($jobId, function (array $event) use ($sse): void {
+        echo "Job event: {$event['type']}\n";
+        if (in_array($event['type'], ['job.completed', 'job.failed'], true)) {
+            $sse->stop();
+        }
+    });
+
+pcntl_async_signals(true); // optional: Ctrl-C / SIGTERM end it too
+pcntl_signal(SIGINT, fn () => $sse->stop());
+pcntl_signal(SIGTERM, fn () => $sse->stop());
+
+$sse->listen(); // blocks until stop()
+$client->close();
+```
+
+Over WebSocket the same pattern is
+`$realtime->ws()->subscribeToQueue('my-queue')->subscribeToJob($jobId)->on('message', $callback)->connect()`,
+which also blocks; end it with `disconnect()`.
 
 #### Direct SSE Client
 
@@ -501,6 +566,37 @@ plan's history retention window (free 1 day, starter 7, pro 30, enterprise 90),
 and only the newest 100 deliveries per webhook are readable. Copy anything you
 need to keep into your own store; once a row is swept it can no longer be
 retried.
+
+#### Verifying a delivery
+
+A webhook with a secret (and a job's completion callback created with
+`completionWebhookSecret`) is sent with `X-Spooled-Timestamp` (Unix seconds) and
+`X-Spooled-Signature: sha256=<hex HMAC-SHA256 of "{timestamp}.{body}">`.
+`Spooled\Webhooks\Signature::verify()` checks both, compares in constant time,
+and rejects a timestamp more than the tolerance (default 300 s) from now:
+
+```php
+<?php
+
+use Spooled\Webhooks\Signature;
+
+$body = file_get_contents('php://input'); // the raw body, before json_decode
+$valid = Signature::verify(
+    getenv('SPOOLED_WEBHOOK_SECRET'),
+    $_SERVER['HTTP_X_SPOOLED_TIMESTAMP'] ?? null,
+    $_SERVER['HTTP_X_SPOOLED_SIGNATURE'] ?? null,
+    $body,
+    toleranceSeconds: 300,
+);
+if (!$valid) {
+    http_response_code(401);
+    exit;
+}
+$event = json_decode($body, true);
+```
+
+`Signature::sign($secret, $timestamp, $body)` returns the header value Spooled
+would send, for tests of your handler.
 
 ### Dead Letter Queue (DLQ)
 
@@ -759,6 +855,16 @@ echo "Created job: {$result['jobId']}\n";
 // Get queue stats
 $stats = $grpc->queue->getStats(['queueName' => 'fast-jobs']);
 
+// Register a worker. Leave out workerId: worker ids are global across all
+// Spooled customers, so a fixed one may already be taken (ALREADY_EXISTS).
+// The server generates a unique id.
+$worker = $grpc->workers->register([
+    'queueName' => 'fast-jobs',
+    'hostname' => gethostname() ?: 'php-worker',
+    'concurrency' => 10,
+]);
+$workerId = $worker['workerId'];
+
 // For manual dequeue loops, keep the returned leaseId and send it on
 // complete(), fail(), and renewLease(): the server rejects a complete or fail
 // without it (INVALID_ARGUMENT). renewLease uses extensionSecs.
@@ -775,15 +881,6 @@ foreach ($dequeued['jobs'] as $job) {
         'retry' => false,   // dead-letter now; omit to retry per the job's max_retries
     ]);
 }
-
-// Register worker. A stable workerId (1-128 chars, [A-Za-z0-9._-]) makes a
-// re-registration after a restart update the same worker instead of adding one.
-$worker = $grpc->workers->register([
-    'queueName' => 'fast-jobs',
-    'hostname' => gethostname(),
-    'concurrency' => 10,
-    'workerId' => 'fast-jobs-worker-01',
-]);
 
 // Send heartbeat
 $grpc->workers->heartbeat([

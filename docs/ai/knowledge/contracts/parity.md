@@ -70,3 +70,8 @@
 - Job GET requires `timeout_seconds` (camelCase `timeoutSeconds`). PHP `Job::$timeoutSeconds` maps it (default 300 when omitted, same as claim). `Schedule::$timeoutSeconds` maps the same field on schedules.
 - `DELETE /jobs/{id}` returns 204 empty. PHP `jobs->cancel()` then `GET`s the cancelled row; do not parse the 204 as a `Job` (that became `id=""` / `status=pending`).
 - `GET /dashboard` job summary sends `completed_24h`, `failed_24h`, `avg_wait_time_ms`, `avg_processing_time_ms` (camelCase `completed24h`/`failed24h`/`avgWaitTimeMs`/`avgProcessingTimeMs`), not `completed`/`failed`/`avgWaitTimeMs` at the top level.
+- Worker ids are one global namespace across organizations (backend BEJOB-19): an id another org registered answers REST `409` / gRPC `ALREADY_EXISTS` "This worker_id cannot be used". `SpooledWorker` sends no `worker_id` when `WorkerConfig::workerId` is null (server mints a UUID); docs and examples must never show a fixed id or a bare hostname.
+- Validation errors (400/422) carry `details: [{field, message, code?}]` (backend `api/middleware/validation.rs`); `ValidationError::getFieldErrors()` groups them by field.
+- `SpooledRealtime::subscribe*()` block until `stop()`; SSE subscriptions are client-side filters on `/api/v1/events`, so several can share one `sse()` connection before `listen()`.
+- Outgoing and completion webhooks: `X-Spooled-Timestamp` (Unix seconds) and `X-Spooled-Signature: sha256=<hex HMAC-SHA256(secret, "{ts}.{body}")>` (backend `outgoing_webhooks/service.rs sign_payload`). `Spooled\Webhooks\Signature::verify()` checks it.
+

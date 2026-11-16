@@ -67,10 +67,13 @@ final readonly class WorkerConfig
          * Set it and registration becomes an upsert: a restarting process
          * reuses the row it already owns instead of leaving the old one holding
          * a plan worker-cap slot until the stale-worker reaper clears it about
-         * two minutes later. Use a value that survives restarts - a hostname,
-         * a Supervisor process number, a StatefulSet ordinal - never a PID or a
-         * freshly generated UUID. Leave it null to keep the server-minted UUID
-         * behaviour.
+         * two minutes later. Worker ids are global across all Spooled
+         * organizations, so the value must be unique to you as well as stable:
+         * a fixed name or a bare hostname may already be taken (HTTP 409,
+         * `ConflictError`). Use a prefix, the hostname and a random suffix
+         * generated once and kept in your config - never a PID or a UUID
+         * generated at every start. Leave it null and the server generates a
+         * unique id.
          */
         public ?string $workerId = null,
     ) {

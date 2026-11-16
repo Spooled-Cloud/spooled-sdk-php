@@ -31,16 +31,53 @@ final class ValidationError extends SpooledError
     }
 
     /**
-     * Get validation errors by field.
+     * Validation messages grouped by field: `['queue_name' => ['message', ...]]`.
      *
-     * @return array<string, array<string>>
+     * The API sends `details` as a list of `{field, message, code}` entries;
+     * each entry becomes one message under its field. A `details.fields` map
+     * (`field => message|messages`) and a plain `field => message|messages`
+     * map are accepted too. An entry without a field is grouped under `''`.
+     * The raw `details` are available from getDetails().
+     *
+     * @return array<string, list<string>>
      */
     public function getFieldErrors(): array
     {
-        if (isset($this->details['fields']) && is_array($this->details['fields'])) {
-            return $this->details['fields'];
+        $source = $this->details;
+        if (isset($source['fields']) && is_array($source['fields'])) {
+            $source = $source['fields'];
         }
 
+        $fieldErrors = [];
+        foreach ($source as $key => $entry) {
+            if (is_array($entry) && (array_key_exists('field', $entry) || array_key_exists('message', $entry))) {
+                $field = is_scalar($entry['field'] ?? null) ? (string) $entry['field'] : '';
+                $message = $entry['message'] ?? $entry['code'] ?? null;
+                $fieldErrors[$field][] = is_scalar($message) ? (string) $message : 'Invalid value';
+
+                continue;
+            }
+
+            $field = is_string($key) ? $key : '';
+            $messages = is_array($entry) ? $entry : [$entry];
+            foreach ($messages as $message) {
+                if (is_scalar($message)) {
+                    $fieldErrors[$field][] = (string) $message;
+                }
+            }
+        }
+
+        return $fieldErrors;
+    }
+
+    /**
+     * The raw `details` of the error response, as the API sent them (for a
+     * validation failure, a list of `{field, message, code}` entries).
+     *
+     * @return array<array-key, mixed>
+     */
+    public function getDetails(): array
+    {
         return $this->details;
     }
 }

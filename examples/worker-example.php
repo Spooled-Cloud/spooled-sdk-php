@@ -25,9 +25,12 @@ $worker = new SpooledWorker($client, new WorkerConfig(
     concurrency: 3,
     pollInterval: 1000,  // 1 second (ms)
     heartbeatInterval: 30000,  // 30 seconds (ms)
-    // Stable id: restarts upsert this worker's row instead of leaving the old
-    // one against the plan worker cap until the stale-worker reaper clears it.
-    workerId: getenv('SPOOLED_WORKER_ID') ?: 'example-worker-01',
+    // Worker ids are global across all Spooled customers, so a fixed id such
+    // as 'example-worker-01' may already be taken (409). Unset, the server
+    // generates a unique one. To keep one id across restarts, set
+    // SPOOLED_WORKER_ID to an id only you use (prefix + hostname + a random
+    // suffix generated once).
+    workerId: getenv('SPOOLED_WORKER_ID') ?: null,
 ));
 
 // Register event handlers

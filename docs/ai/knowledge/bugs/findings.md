@@ -83,3 +83,16 @@
 | W9-09 | P3 | ~~scripts/test-local.php: stale lease/key/metrics/payload checks and production-unsafe tests; test-production.php silent on Windows~~ **FIXED 1.4.0 - 134/144 pass on production, unsafe tests opt-in; org-wide clean-ups: W9-11** | `scripts/test-local.php; scripts/test-production.php` |
 | W9-10 | P3 | ~~scripts/generate-grpc.php rewrote the stub namespace to Spooled\Grpc\Stubs (breaks the Spooled\V1 autoload) and needed `which`~~ **FIXED 1.4.0** | `scripts/generate-grpc.php` |
 | W9-11 | P2 | ~~scripts/test-local.php deleted up to 100 schedules and cancelled up to 100 unfinished workflows of the whole organization (`cleanupSchedules`/`cleanupWorkflows`, no name check, not behind `RUN_UNSAFE_TESTS`, also in `test-production`); the job clean-up cancelled jobs in any `test-` queue~~ **FIXED 1.4.0 - only names with the run prefix `test-<unix time>-<8 hex>-` (schedule: name and queue); unit-tested** | `scripts/lib/suite-cleanup.php; scripts/test-local.php; tests/Unit/Scripts/SuiteCleanupTest.php` |
+
+## Tester round 2026-11-16 (published 1.6.0 against production)
+
+| ID | Sev | Summary | Evidence |
+| --- | --- | --- | --- |
+| GP-1 | P1 | ~~README/docs/examples pinned worker ids (`my-queue-worker-01`, `worker-1`, `emails-worker-01`, Supervisor `spooled-worker-NN`) another org can own: 409 "This worker_id cannot be used" (ids are global, backend BEJOB-19)~~ **FIXED (Unreleased)**: omit or prefix+host+random; worker already sends none when unset | `README.md`; `docs/{workers,resources,grpc}.md`; `examples/worker-example.php` |
+| GP-4 | P2 | ~~README realtime: `subscribeToQueue()` blocks, following lines never ran~~ **FIXED (Unreleased)**: chain on `sse()` + `listen()`, `stop()` from callback/signal; docblocks say it blocks | `README.md`; `src/Realtime/SpooledRealtime.php` |
+| GP-5 | P3 | ~~`ValidationError::getFieldErrors()` returned raw `details` list~~ **FIXED (Unreleased)**: `field => [messages]`; raw via `getDetails()` | `src/Errors/ValidationError.php` |
+| GP-10/GH-19 | P3 | ~~Quick Start lacked `require 'vendor/autoload.php'`~~ **FIXED (Unreleased)** | `README.md`; `docs/GETTING_STARTED.md` |
+| DOC-13 | P3 | ~~Docs did not say worker needs ext-pcntl/posix (throws), WS needs ratchet/pawl, gRPC needs pecl only (told users to require hard deps)~~ **FIXED (Unreleased)** | `README.md`; `docs/{GETTING_STARTED,grpc}.md`; `composer.json` suggest |
+| GP-12 | P3 | ~~No webhook signature helper~~ **ADDED (Unreleased)**: `Spooled\Webhooks\Signature` | `src/Webhooks/Signature.php` |
+| REPO-01 | P3 | ~~Committed `test-results.json` (1.0.0 test-run output)~~ **REMOVED (Unreleased)**, ignored | `.gitignore` |
+

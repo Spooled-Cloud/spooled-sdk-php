@@ -8,7 +8,7 @@ declare(strict_types=1);
  * Requirements:
  * - ext-grpc (pecl install grpc)
  * - ext-protobuf (pecl install protobuf)
- * - composer require grpc/grpc google/protobuf
+ * (the grpc/grpc and google/protobuf Composer packages come with the SDK)
  */
 
 require_once __DIR__ . '/../vendor/autoload.php';

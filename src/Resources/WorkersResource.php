@@ -30,9 +30,11 @@ final class WorkersResource extends BaseResource
      * Accepted keys: `queueName`, `hostname`, `maxConcurrency`, `workerType`,
      * `version`, `metadata`, and the optional `workerId`.
      *
-     * `workerId` is 1-128 characters from `[A-Za-z0-9._-]`. Supplying a stable
-     * value (a hostname or an ordinal, never a PID or a fresh UUID) makes
-     * registration an upsert, so a restarting worker reuses the row it already
+     * `workerId` is 1-128 characters from `[A-Za-z0-9._-]`. Worker ids are
+     * global across all Spooled organizations, so it must be unique to you: a
+     * fixed name or a bare hostname may already be taken (HTTP 409). Supplying
+     * a stable value unique to you (a prefix, the hostname and a random suffix
+     * generated once; never a PID or a fresh UUID) makes registration an upsert, so a restarting worker reuses the row it already
      * owns; re-registering an id you own is not charged against the plan worker
      * cap. Omit it and the server mints a UUID instead, which means every
      * restart leaves the previous row holding a worker-cap slot until the
